@@ -51,7 +51,7 @@
       border-collapse: collapse;
       background: white;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      min-width: 1100px;
+      min-width: 1150px;
     }
     th, td {
       border: 1px solid #e2e8f0;
@@ -117,7 +117,6 @@
       z-index: 999;
     }
 
-    /* 页面内的备用弹窗样式 */
     .alert-toast {
       position: fixed;
       bottom: 50px;
@@ -162,6 +161,7 @@
     <table>
       <thead>
         <tr>
+          <th style="width: 50px;">序号</th>
           <th style="width: 180px;">开赛时间（日期/时间）</th>
           <th style="width: 90px;">比赛场数</th>
           <th style="width: 140px;">联赛</th>
@@ -187,7 +187,7 @@
     let rowsData = [];
     let rowIdCounter = 0;
 
-    // Web Worker 用于防止后台/最小化时定时器被浏览器冻结
+    // Web Worker 防止后台/最小化时定时器被浏览器强行降频
     const workerBlob = new Blob([`
       setInterval(() => { postMessage('tick'); }, 1000);
     `], { type: 'text/javascript' });
@@ -206,7 +206,6 @@
       return `${m}/${d} ${hh}:${mm}`;
     }
 
-    // 请求系统桌面通知权限
     function requestNotificationPermission() {
       if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
         Notification.requestPermission();
@@ -225,6 +224,7 @@
           if (Array.isArray(parsed) && parsed.length > 0) {
             rowsData = parsed.map(r => ({
               ...r,
+              matchDate: r.matchDate ? new Date(r.matchDate) : null,
               earlyOddsDate: r.earlyOddsDate ? new Date(r.earlyOddsDate) : null,
               midDate: r.midDate ? new Date(r.midDate) : null
             }));
@@ -238,7 +238,6 @@
       return false;
     }
 
-    // 持续 10 秒的滴滴警报声 (每0.5秒发声一次)
     function playBeep10Sec() {
       try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -271,7 +270,6 @@
       }
     }
 
-    // 触发桌面弹窗 + 声音提醒
     function triggerAlert(matchNum, nodeName) {
       playBeep10Sec();
 
@@ -300,7 +298,6 @@
       container.appendChild(toast);
     }
 
-    // 解析输入的日期与时间
     function parseDateAndTimeStr(dateStr, timeStr) {
       if (!dateStr || !timeStr) return null;
       let dStr = dateStr.trim();
@@ -338,6 +335,65 @@
       return dt;
     }
 
+    // 根据开赛时间自动从小到大（由近及远）排序
+    function sortRowsByTime() {
+      rowsData.sort((a, b) => {
+        if (!a.matchDate) return 1;
+        if (!b.matchDate) return -1;
+        return a.matchDate.getTime() - b.matchDate.getTime();
+      });
+    }
+
+    // 重新烘焙并渲染整个表格（更新序号和最新排序）
+    function renderAllRows() {
+      sortRowsByTime();
+      const tbody = document.getElementById('match-table-body');
+      tbody.innerHTML = '';
+
+      rowsData.forEach((row, index) => {
+        const tr = document.createElement('tr');
+        tr.id = `row-${row.id}`;
+
+        let earlyTimeText = "-";
+        let midTimeText = "-";
+        if (row.matchDate) {
+          earlyTimeText = formatDate(row.earlyOddsDate);
+          midTimeText = formatDate(row.midDate);
+        }
+
+        tr.innerHTML = `
+          <td class="font-en" style="font-weight: bold; color: #7f8c8d;">${index + 1}</td>
+          <td>
+            <input type="text" id="input-date-${row.id}" class="font-en time-date-input" value="${row.datePart}" placeholder="0725"
+              oninput="handleTimeInput(${row.id})"
+              onblur="handleTimeConfirm(${row.id})"
+              onkeydown="if(event.key==='Enter') { this.blur(); handleTimeConfirm(${row.id}); }">
+            <input type="text" id="input-time-${row.id}" class="font-en time-clock-input" value="${row.timePart}" placeholder="1500"
+              oninput="handleTimeInput(${row.id})"
+              onblur="handleTimeConfirm(${row.id})"
+              onkeydown="if(event.key==='Enter') { this.blur(); handleTimeConfirm(${row.id}); }">
+          </td>
+          <td>
+            <input type="text" class="font-en full-width-input" value="${row.matchNum}" 
+              oninput="updateMatchNum(${row.id}, this.value)">
+          </td>
+          <td>
+            <input type="text" class="font-zh full-width-input" value="${row.league}" 
+              oninput="updateLeague(${row.id}, this.value)">
+          </td>
+          <td><span class="box-cell bg-early-time font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
+          <td id="row-${row.id}-early-cd-cell"></td>
+          <td><span class="box-cell bg-mid-time font-en" id="row-${row.id}-mid-time">${midTimeText}</span></td>
+          <td id="row-${row.id}-mid-cd-cell"></td>
+          <td><button class="btn-del" onclick="removeMatchRow(${row.id})">删除</button></td>
+        `;
+        tbody.appendChild(tr);
+        updateDynamicPart(row);
+      });
+
+      updateMatchCount();
+    }
+
     function addMatchRow() {
       requestNotificationPermission();
       rowIdCounter++;
@@ -347,40 +403,35 @@
       const defaultTime = new Date(now.getTime() + 2 * 60 * 60 * 1000);
       defaultTime.setMinutes(0, 0, 0);
 
+      const datePart = `${formatDigit(defaultTime.getMonth() + 1)}/${formatDigit(defaultTime.getDate())}`;
+      const timePart = `${formatDigit(defaultTime.getHours())}:${formatDigit(defaultTime.getMinutes())}`;
+      const dt = parseDateAndTimeStr(datePart, timePart);
+
       const rowObj = {
         id: id,
-        datePart: `${formatDigit(defaultTime.getMonth() + 1)}/${formatDigit(defaultTime.getDate())}`,
-        timePart: `${formatDigit(defaultTime.getHours())}:${formatDigit(defaultTime.getMinutes())}`,
+        datePart: datePart,
+        timePart: timePart,
         matchNum: "",
         league: "",
         isMonitoring: true,
-        earlyOddsDate: null,
-        midDate: null,
+        matchDate: dt,
+        earlyOddsDate: dt ? new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000) : null,
+        midDate: dt ? new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000) : null,
         earlyTriggered: false,
         midTriggered: false
       };
 
-      const dt = parseDateAndTimeStr(rowObj.datePart, rowObj.timePart);
-      if (dt) {
-        rowObj.earlyOddsDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
-        rowObj.midDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
-      }
-
       rowsData.push(rowObj);
-      renderSingleRowDOM(rowObj);
-      updateMatchCount();
+      renderAllRows();
       saveData();
     }
 
     function removeMatchRow(id) {
       rowsData = rowsData.filter(r => r.id !== id);
-      const tr = document.getElementById(`row-${id}`);
-      if (tr) tr.remove();
-      updateMatchCount();
+      renderAllRows();
       saveData();
     }
 
-    // 输入框输入时，暂存数据并显示“待确认”提示
     function handleTimeInput(id) {
       const row = rowsData.find(r => r.id === id);
       if (!row) return;
@@ -400,11 +451,13 @@
 
       const dt = parseDateAndTimeStr(row.datePart, row.timePart);
       if (dt) {
+        row.matchDate = dt;
         const eDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
         const mDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
         if (earlyTimeSpan) earlyTimeSpan.innerText = formatDate(eDate);
         if (midTimeSpan) midTimeSpan.innerText = formatDate(mDate);
       } else {
+        row.matchDate = null;
         if (earlyTimeSpan) earlyTimeSpan.innerText = "格式错误";
         if (midTimeSpan) midTimeSpan.innerText = "格式错误";
       }
@@ -414,7 +467,6 @@
       saveData();
     }
 
-    // 确认时间修改（支持按 Enter 回车 OR 鼠标点击空白处/失焦自动确认）
     function handleTimeConfirm(id) {
       requestNotificationPermission();
       const row = rowsData.find(r => r.id === id);
@@ -429,11 +481,7 @@
 
       row.datePart = `${formatDigit(dt.getMonth() + 1)}/${formatDigit(dt.getDate())}`;
       row.timePart = `${formatDigit(dt.getHours())}:${formatDigit(dt.getMinutes())}`;
-
-      const dateElem = document.getElementById(`input-date-${id}`);
-      const timeElem = document.getElementById(`input-time-${id}`);
-      if (dateElem) dateElem.value = row.datePart;
-      if (timeElem) timeElem.value = row.timePart;
+      row.matchDate = dt;
 
       row.earlyOddsDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
       row.midDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
@@ -452,8 +500,8 @@
         triggerAlert(numDisplay, "初盘时间(已过期)");
       }
       
-      updateDynamicPart(row);
       saveData();
+      renderAllRows(); // 确认时间后重排 DOM 展现最新顺序
     }
 
     function updateMatchNum(id, val) {
@@ -471,50 +519,6 @@
         row.league = val;
         saveData();
       }
-    }
-
-    function renderSingleRowDOM(row) {
-      const tbody = document.getElementById('match-table-body');
-      const tr = document.createElement('tr');
-      tr.id = `row-${row.id}`;
-
-      let earlyTimeText = "-";
-      let midTimeText = "-";
-      const dt = parseDateAndTimeStr(row.datePart, row.timePart);
-      if (dt) {
-        const eDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
-        const mDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
-        earlyTimeText = formatDate(eDate);
-        midTimeText = formatDate(mDate);
-      }
-
-      tr.innerHTML = `
-        <td>
-          <input type="text" id="input-date-${row.id}" class="font-en time-date-input" value="${row.datePart}" placeholder="0725"
-            oninput="handleTimeInput(${row.id})"
-            onblur="handleTimeConfirm(${row.id})"
-            onkeydown="if(event.key==='Enter') { this.blur(); handleTimeConfirm(${row.id}); }">
-          <input type="text" id="input-time-${row.id}" class="font-en time-clock-input" value="${row.timePart}" placeholder="1500"
-            oninput="handleTimeInput(${row.id})"
-            onblur="handleTimeConfirm(${row.id})"
-            onkeydown="if(event.key==='Enter') { this.blur(); handleTimeConfirm(${row.id}); }">
-        </td>
-        <td>
-          <input type="text" class="font-en full-width-input" value="${row.matchNum}" 
-            oninput="updateMatchNum(${row.id}, this.value)">
-        </td>
-        <td>
-          <input type="text" class="font-zh full-width-input" value="${row.league}" 
-            oninput="updateLeague(${row.id}, this.value)">
-        </td>
-        <td><span class="box-cell bg-early-time font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
-        <td id="row-${row.id}-early-cd-cell"></td>
-        <td><span class="box-cell bg-mid-time font-en" id="row-${row.id}-mid-time">${midTimeText}</span></td>
-        <td id="row-${row.id}-mid-cd-cell"></td>
-        <td><button class="btn-del" onclick="removeMatchRow(${row.id})">删除</button></td>
-      `;
-      tbody.appendChild(tr);
-      updateDynamicPart(row);
     }
 
     function updateMatchCount() {
@@ -581,7 +585,6 @@
       if (midCell.innerHTML !== midCdHtml) midCell.innerHTML = midCdHtml;
     }
 
-    // 监听 Web Worker 定时器，确保后台/最小化时也能 1 秒刷新一次
     timerWorker.onmessage = function() {
       const now = getNow();
       const timeStr = `${formatDate(now)}:${formatDigit(now.getSeconds())}`;
@@ -595,8 +598,7 @@
       requestNotificationPermission();
       const hasHistory = loadData();
       if (hasHistory) {
-        rowsData.forEach(row => renderSingleRowDOM(row));
-        updateMatchCount();
+        renderAllRows();
       } else {
         addMatchRow();
       }
