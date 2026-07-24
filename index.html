@@ -302,6 +302,8 @@
       let dStr = dateStr.trim();
       let tStr = timeStr.trim();
 
+      if (!dStr || !tStr) return null;
+
       let month, day, hour, minute;
 
       if (/^\d{4}$/.test(dStr)) {
@@ -334,6 +336,7 @@
       return dt;
     }
 
+    // 排序逻辑：有具体开赛时间的按时间升序，没有完整时间的排在最底部
     function sortRowsByTime() {
       rowsData.sort((a, b) => {
         if (!a.matchDate && !b.matchDate) return 0;
@@ -380,12 +383,14 @@
       tr.innerHTML = `
         <td class="font-en row-index-cell" style="font-weight: bold; color: #7f8c8d;">${indexNum}</td>
         <td>
-          <input type="text" id="input-date-${row.id}" class="font-en time-date-input" value="${row.datePart}" placeholder="0725"
+          <input type="text" id="input-date-${row.id}" class="font-en time-date-input" value="${row.datePart}"
             oninput="handleTimeInput(${row.id})"
-            onblur="handleTimeConfirm(${row.id})">
-          <input type="text" id="input-time-${row.id}" class="font-en time-clock-input" value="${row.timePart}" placeholder="1500"
+            onblur="handleTimeConfirm(${row.id})"
+            onkeydown="if(event.key==='Enter') { this.blur(); }">
+          <input type="text" id="input-time-${row.id}" class="font-en time-clock-input" value="${row.timePart}" placeholder=""
             oninput="handleTimeInput(${row.id})"
-            onblur="handleTimeConfirm(${row.id})">
+            onblur="handleTimeConfirm(${row.id})"
+            onkeydown="if(event.key==='Enter') { this.blur(); }">
         </td>
         <td>
           <input type="text" class="font-en full-width-input" value="${row.matchNum}" 
@@ -405,15 +410,20 @@
       updateDynamicPart(row);
     }
 
+    // 点击添加：日期自动算次日（明天），时间置空，稳稳停在最后一行
     function addMatchRow() {
       requestNotificationPermission();
       rowIdCounter++;
       const id = rowIdCounter;
 
+      const now = getNow();
+      const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      const defaultDateStr = `${formatDigit(tomorrow.getMonth() + 1)}/${formatDigit(tomorrow.getDate())}`;
+
       const rowObj = {
         id: id,
-        datePart: "",
-        timePart: "",
+        datePart: defaultDateStr, // 默认次日日期
+        timePart: "",            // 纯空白时间，无占位文字
         matchNum: "",
         league: "",
         isMonitoring: false,
@@ -476,7 +486,7 @@
       saveData();
     }
 
-    // 确认时间后，仅在原地开启倒计时，绝不动表格的整体行位置
+    // 只有当你输入完时间，点击别处失焦（或按 Enter）后，才会重新进行全表时间升序排列
     function handleTimeConfirm(id) {
       requestNotificationPermission();
       const row = rowsData.find(r => r.id === id);
@@ -496,12 +506,8 @@
       row.earlyOddsDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
       row.midDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
       row.isMonitoring = true;
-
-      // 更新原地的初盘和中场时间文本
-      const earlyTimeSpan = document.getElementById(`row-${id}-early-time`);
-      const midTimeSpan = document.getElementById(`row-${id}-mid-time`);
-      if (earlyTimeSpan) earlyTimeSpan.innerText = formatDate(row.earlyOddsDate);
-      if (midTimeSpan) midTimeSpan.innerText = formatDate(row.midDate);
+      row.earlyTriggered = false;
+      row.midTriggered = false;
 
       const now = getNow();
       const numDisplay = row.matchNum.trim() || "-";
@@ -515,7 +521,7 @@
       }
       
       saveData();
-      updateDynamicPart(row); // 只更新当前行的倒计时状态，不上刷全表
+      renderAllRows(); // 输入完成后触发自动排序并更新序号
     }
 
     function updateMatchNum(id, val) {
