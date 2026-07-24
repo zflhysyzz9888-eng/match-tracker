@@ -15,7 +15,7 @@
       font-family: var(--font-zh);
       background-color: #f9f9f9;
       color: #2c3e50;
-      padding-bottom: 40px; /* status bar height */
+      padding-bottom: 40px;
     }
     .top-bar {
       background-color: #2c3e50;
@@ -180,6 +180,7 @@
     const TIME_FORMAT_REGEX = /^(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/;
     const BEFORE_MATCH_FOR_EARLY = 15;
     const AFTER_MATCH_FOR_MID = 45;
+    const STORAGE_KEY = "MATCH_TRACKER_DATA";
 
     let rowsData = [];
     let rowIdCounter = 0;
@@ -197,10 +198,39 @@
       return `${m}/${d} ${hh}:${mm}`;
     }
 
+    // 本地缓存数据读取与保存
+    function saveData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(rowsData));
+    }
+
+    function loadData() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            rowsData = parsed.map(r => {
+              // 恢复 Date 对象类型
+              return {
+                ...r,
+                earlyOddsDate: r.earlyOddsDate ? new Date(r.earlyOddsDate) : null,
+                midDate: r.midDate ? new Date(r.midDate) : null
+              };
+            });
+            rowIdCounter = Math.max(...rowsData.map(r => r.id), 0);
+            return true;
+          }
+        } catch (e) {
+          console.error("加载本地缓存失败:", e);
+        }
+      }
+      return false;
+    }
+
     function playBeep() {
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        if (ctx.state === 'suspended') ctx.resume(); // Safari/Chrome fix
+        if (ctx.state === 'suspended') ctx.resume();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = "sine";
@@ -239,7 +269,7 @@
       const rowObj = {
         id: id,
         timeStr: formatDate(defaultTime),
-        matchNum: (rowsData.length + 1).toString(),
+        matchNum: "", // 默认为空白
         league: "",
         isMonitoring: false,
         earlyOddsDate: null,
@@ -250,16 +280,19 @@
 
       rowsData.push(rowObj);
       renderTableStructure();
-      handleTimeConfirm(id, true); // 初始化时自动确认时间，计算倒计时
+      handleTimeConfirm(id, true);
+      saveData();
     }
 
     function removeMatchRow(id) {
       rowsData = rowsData.filter(r => r.id !== id);
       renderTableStructure();
       updateMatchCount();
+      saveData();
     }
 
     function parseMatchTime(timeStr) {
+      if (!timeStr) return null;
       const match = timeStr.trim().match(TIME_FORMAT_REGEX);
       if (!match) return null;
       const now = getNow();
@@ -279,12 +312,18 @@
       const row = rowsData.find(r => r.id === id);
       if (!row) return;
 
+      const inputElem = document.getElementById(`input-time-${id}`);
+      if (inputElem) {
+        row.timeStr = inputElem.value.trim();
+      }
+
       const dt = parseMatchTime(row.timeStr);
       if (!dt) {
         row.isMonitoring = false;
         row.earlyOddsDate = null;
         row.midDate = null;
-        renderTableStructure(); // 刷新显示“格式错误”
+        renderTableStructure();
+        saveData();
         return;
       }
 
@@ -294,42 +333,58 @@
       row.earlyTriggered = false;
       row.midTriggered = false;
 
-      // 如果不是刚添加（即是手动回车确认），才执行弹窗逻辑
       if (!isInitialAdd) {
         const now = getNow();
         const numDisplay = row.matchNum.trim() || "-";
         if (now >= row.midDate) {
           row.midTriggered = true;
-          row.earlyTriggered = true; // 既然中场都过期了，初盘默认过期
+          row.earlyTriggered = true;
           triggerAlert(numDisplay, "中场时间(已过期)");
         } else if (now >= row.earlyOddsDate) {
           row.earlyTriggered = true;
           triggerAlert(numDisplay, "初盘时间(已过期)");
         }
       }
-      renderTableStructure(); // 刷新显示倒计时
+      renderTableStructure();
+      saveData();
     }
 
-    // 仅用于输入更改时，停止监控，变为“请确认”状态
-    function updateRowField(id, field, value) {
+    function updateMatchNum(id, val) {
       const row = rowsData.find(r => r.id === id);
       if (row) {
-        row[field] = value;
-        if (field === 'timeStr') {
-          row.isMonitoring = false; // 用户更改时间字符串，必须重新回车确认
-          renderTableStructure(); // 立即让倒计时变为黄色的“请回车确认”
-        }
+        row.matchNum = val;
+        saveData();
       }
     }
 
-    // 渲染表格的静态结构（输入框、静态时间），不渲染动态倒计时部分
+    function updateLeague(id, val) {
+      const row = rowsData.find(r => r.id === id);
+      if (row) {
+        row.league = val;
+        saveData();
+      }
+    }
+
+    function markTimeAsModified(id) {
+      const row = rowsData.find(r => r.id === id);
+      if (row && row.isMonitoring) {
+        row.isMonitoring = false;
+        // 仅局部更新倒计时单元格为“请回车确认”，保留输入框焦点
+        const earlyCell = document.getElementById(`row-${id}-early-cd-cell`);
+        const midCell = document.getElementById(`row-${id}-mid-cd-cell`);
+        if (earlyCell) earlyCell.innerHTML = `<span class="box-cell bg-warning">请回车确认</span>`;
+        if (midCell) midCell.innerHTML = `<span class="box-cell bg-warning">请回车确认</span>`;
+        saveData();
+      }
+    }
+
     function renderTableStructure() {
       const tbody = document.getElementById('match-table-body');
       tbody.innerHTML = '';
 
       rowsData.forEach(row => {
         const tr = document.createElement('tr');
-        tr.id = `row-${row.id}`; // 给行一个ID以便后续更新动态部分
+        tr.id = `row-${row.id}`;
 
         let earlyTimeText = "-";
         let midTimeText = "-";
@@ -347,17 +402,17 @@
 
         tr.innerHTML = `
           <td>
-            <input type="text" class="font-en" value="${row.timeStr}" 
-              oninput="updateRowField(${row.id}, 'timeStr', this.value)"
+            <input type="text" id="input-time-${row.id}" class="font-en" value="${row.timeStr}" 
+              oninput="markTimeAsModified(${row.id})"
               onkeydown="if(event.key==='Enter') handleTimeConfirm(${row.id})">
           </td>
           <td>
             <input type="text" class="font-en" value="${row.matchNum}" 
-              oninput="updateRowField(${row.id}, 'matchNum', this.value)">
+              oninput="updateMatchNum(${row.id}, this.value)">
           </td>
           <td>
             <input type="text" class="font-zh" value="${row.league}" 
-              oninput="updateRowField(${row.id}, 'league', this.value)">
+              oninput="updateLeague(${row.id}, this.value)">
           </td>
           <td><span class="box-cell bg-early-time font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
           <td id="row-${row.id}-early-cd-cell"></td>
@@ -366,7 +421,7 @@
           <td><button class="btn-del" onclick="removeMatchRow(${row.id})">删除</button></td>
         `;
         tbody.appendChild(tr);
-        updateDynamicPart(row); // 立即渲染该行的动态倒计时
+        updateDynamicPart(row);
       });
       updateMatchCount();
     }
@@ -375,7 +430,6 @@
       document.getElementById('total-count').innerText = `（总计 ${rowsData.length} 场）`;
     }
 
-    // 动态更新每一行的倒计时单元格
     function updateDynamicPart(row) {
       const earlyCell = document.getElementById(`row-${row.id}-early-cd-cell`);
       const midCell = document.getElementById(`row-${row.id}-mid-cd-cell`);
@@ -399,6 +453,7 @@
           if (!row.earlyTriggered) {
             row.earlyTriggered = true;
             triggerAlert(numDisplay, "初盘时间");
+            saveData();
           }
           earlyCdHtml = `<span class="box-cell bg-expired font-zh">初盘已开始</span>`;
         }
@@ -414,39 +469,36 @@
           if (!row.midTriggered) {
             row.midTriggered = true;
             triggerAlert(numDisplay, "中场时间");
+            saveData();
           }
           midCdHtml = `<span class="box-cell bg-expired font-zh">中场已结束</span>`;
         }
       }
       
-      // 使用更精细的方式更新内部HTML
       if (earlyCell.innerHTML !== earlyCdHtml) earlyCell.innerHTML = earlyCdHtml;
       if (midCell.innerHTML !== midCdHtml) midCell.innerHTML = midCdHtml;
     }
 
-    // 主定时循环
+    // 1秒定时更新
     setInterval(() => {
       const now = getNow();
       const timeStr = `${formatDate(now)}:${formatDigit(now.getSeconds())}`;
       const status = document.getElementById('status-bar');
       if (status) status.innerText = `当前时间: ${timeStr} | 追踪场次: ${rowsData.length}`;
       
-      // 遍历所有数据，更新每一行的静态和动态部分
       rowsData.forEach(row => {
-        // 先尝试更新动态部分
-        let hasCell = document.getElementById(`row-${row.id}-early-cd-cell`);
-        if (hasCell) {
-          updateDynamicPart(row);
-        } else {
-          // 如果表格结构被破坏了，完整渲染
-          renderTableStructure(); 
-        }
+        updateDynamicPart(row);
       });
     }, 1000);
 
-    // 初始化运行
+    // 初始化：加载历史数据或新建默认行
     window.onload = function() {
-      addMatchRow();
+      const hasHistory = loadData();
+      if (hasHistory) {
+        renderTableStructure();
+      } else {
+        addMatchRow();
+      }
     }
   </script>
 </body>
