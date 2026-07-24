@@ -187,7 +187,6 @@
     let rowsData = [];
     let rowIdCounter = 0;
 
-    // Web Worker 防止后台/最小化时定时器被浏览器强行降频
     const workerBlob = new Blob([`
       setInterval(() => { postMessage('tick'); }, 1000);
     `], { type: 'text/javascript' });
@@ -335,7 +334,6 @@
       return dt;
     }
 
-    // 根据开赛时间自动从小到大（由近及远）排序
     function sortRowsByTime() {
       rowsData.sort((a, b) => {
         if (!a.matchDate) return 1;
@@ -344,54 +342,71 @@
       });
     }
 
-    // 重新烘焙并渲染整个表格（更新序号和最新排序）
+    // 更新 DOM 每一行的数字序号
+    function updateRowIndexes() {
+      const tbody = document.getElementById('match-table-body');
+      Array.from(tbody.children).forEach((tr, index) => {
+        const indexTd = tr.querySelector('.row-index-cell');
+        if (indexTd) {
+          indexTd.innerText = index + 1;
+        }
+      });
+    }
+
+    // 重新排序并全量烘焙 DOM
     function renderAllRows() {
       sortRowsByTime();
       const tbody = document.getElementById('match-table-body');
       tbody.innerHTML = '';
 
       rowsData.forEach((row, index) => {
-        const tr = document.createElement('tr');
-        tr.id = `row-${row.id}`;
-
-        let earlyTimeText = "-";
-        let midTimeText = "-";
-        if (row.matchDate) {
-          earlyTimeText = formatDate(row.earlyOddsDate);
-          midTimeText = formatDate(row.midDate);
-        }
-
-        tr.innerHTML = `
-          <td class="font-en" style="font-weight: bold; color: #7f8c8d;">${index + 1}</td>
-          <td>
-            <input type="text" id="input-date-${row.id}" class="font-en time-date-input" value="${row.datePart}" placeholder="0725"
-              oninput="handleTimeInput(${row.id})"
-              onblur="handleTimeConfirm(${row.id})"
-              onkeydown="if(event.key==='Enter') { this.blur(); handleTimeConfirm(${row.id}); }">
-            <input type="text" id="input-time-${row.id}" class="font-en time-clock-input" value="${row.timePart}" placeholder="1500"
-              oninput="handleTimeInput(${row.id})"
-              onblur="handleTimeConfirm(${row.id})"
-              onkeydown="if(event.key==='Enter') { this.blur(); handleTimeConfirm(${row.id}); }">
-          </td>
-          <td>
-            <input type="text" class="font-en full-width-input" value="${row.matchNum}" 
-              oninput="updateMatchNum(${row.id}, this.value)">
-          </td>
-          <td>
-            <input type="text" class="font-zh full-width-input" value="${row.league}" 
-              oninput="updateLeague(${row.id}, this.value)">
-          </td>
-          <td><span class="box-cell bg-early-time font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
-          <td id="row-${row.id}-early-cd-cell"></td>
-          <td><span class="box-cell bg-mid-time font-en" id="row-${row.id}-mid-time">${midTimeText}</span></td>
-          <td id="row-${row.id}-mid-cd-cell"></td>
-          <td><button class="btn-del" onclick="removeMatchRow(${row.id})">删除</button></td>
-        `;
-        tbody.appendChild(tr);
-        updateDynamicPart(row);
+        appendRowToDOM(row, index + 1);
       });
 
       updateMatchCount();
+    }
+
+    // 生成单行 HTML 节点追加到 DOM（不重新清空整个表格）
+    function appendRowToDOM(row, indexNum) {
+      const tbody = document.getElementById('match-table-body');
+      const tr = document.createElement('tr');
+      tr.id = `row-${row.id}`;
+
+      let earlyTimeText = "-";
+      let midTimeText = "-";
+      if (row.matchDate) {
+        earlyTimeText = formatDate(row.earlyOddsDate);
+        midTimeText = formatDate(row.midDate);
+      }
+
+      tr.innerHTML = `
+        <td class="font-en row-index-cell" style="font-weight: bold; color: #7f8c8d;">${indexNum}</td>
+        <td>
+          <input type="text" id="input-date-${row.id}" class="font-en time-date-input" value="${row.datePart}" placeholder="0725"
+            oninput="handleTimeInput(${row.id})"
+            onblur="handleTimeConfirm(${row.id})"
+            onkeydown="if(event.key==='Enter') { this.blur(); handleTimeConfirm(${row.id}); }">
+          <input type="text" id="input-time-${row.id}" class="font-en time-clock-input" value="${row.timePart}" placeholder="2300"
+            oninput="handleTimeInput(${row.id})"
+            onblur="handleTimeConfirm(${row.id})"
+            onkeydown="if(event.key==='Enter') { this.blur(); handleTimeConfirm(${row.id}); }">
+        </td>
+        <td>
+          <input type="text" class="font-en full-width-input" value="${row.matchNum}" 
+            oninput="updateMatchNum(${row.id}, this.value)">
+        </td>
+        <td>
+          <input type="text" class="font-zh full-width-input" value="${row.league}" 
+            oninput="updateLeague(${row.id}, this.value)">
+        </td>
+        <td><span class="box-cell bg-early-time font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
+        <td id="row-${row.id}-early-cd-cell"></td>
+        <td><span class="box-cell bg-mid-time font-en" id="row-${row.id}-mid-time">${midTimeText}</span></td>
+        <td id="row-${row.id}-mid-cd-cell"></td>
+        <td><button class="btn-del" onclick="removeMatchRow(${row.id})">删除</button></td>
+      `;
+      tbody.appendChild(tr);
+      updateDynamicPart(row);
     }
 
     function addMatchRow() {
@@ -400,11 +415,11 @@
       const id = rowIdCounter;
       
       const now = getNow();
-      const defaultTime = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-      defaultTime.setMinutes(0, 0, 0);
+      // 获取当月最后一日 23:00
+      const defaultTime = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 0, 0);
 
       const datePart = `${formatDigit(defaultTime.getMonth() + 1)}/${formatDigit(defaultTime.getDate())}`;
-      const timePart = `${formatDigit(defaultTime.getHours())}:${formatDigit(defaultTime.getMinutes())}`;
+      const timePart = `23:00`;
       const dt = parseDateAndTimeStr(datePart, timePart);
 
       const rowObj = {
@@ -422,13 +437,20 @@
       };
 
       rowsData.push(rowObj);
-      renderAllRows();
+      
+      // 直接追加到表格末尾，不触发全局重新排序，确保不打扰用户输入
+      const nextIndex = document.getElementById('match-table-body').children.length + 1;
+      appendRowToDOM(rowObj, nextIndex);
+      updateMatchCount();
       saveData();
     }
 
     function removeMatchRow(id) {
       rowsData = rowsData.filter(r => r.id !== id);
-      renderAllRows();
+      const tr = document.getElementById(`row-${id}`);
+      if (tr) tr.remove();
+      updateRowIndexes();
+      updateMatchCount();
       saveData();
     }
 
@@ -467,6 +489,7 @@
       saveData();
     }
 
+    // 只有在按下 Enter 或 鼠标点击空白处（失焦）确认后，才触发自动重排
     function handleTimeConfirm(id) {
       requestNotificationPermission();
       const row = rowsData.find(r => r.id === id);
@@ -501,7 +524,7 @@
       }
       
       saveData();
-      renderAllRows(); // 确认时间后重排 DOM 展现最新顺序
+      renderAllRows(); // 此时确认完毕，触发全表自动重新按时间升序排列
     }
 
     function updateMatchNum(id, val) {
