@@ -182,7 +182,7 @@
   <script>
     const BEFORE_MATCH_FOR_EARLY = 15;
     const AFTER_MATCH_FOR_MID = 45;
-    const STORAGE_KEY = "MATCH_TRACKER_DATA_V3";
+    const STORAGE_KEY = "MATCH_TRACKER_DATA_V4";
 
     let rowsData = [];
     let rowIdCounter = 0;
@@ -309,7 +309,7 @@
       if (/^\d{4}$/.test(dStr)) {
         month = parseInt(dStr.substring(0, 2), 10) - 1;
         day = parseInt(dStr.substring(2, 4), 10);
-      } else if (/^\d{2}\/\d{2}$/.test(dStr)) {
+      } else if (/^\d{1,2}\/\d{1,2}$/.test(dStr)) {
         const parts = dStr.split('/');
         month = parseInt(parts[0], 10) - 1;
         day = parseInt(parts[1], 10);
@@ -320,7 +320,7 @@
       if (/^\d{4}$/.test(tStr)) {
         hour = parseInt(tStr.substring(0, 2), 10);
         minute = parseInt(tStr.substring(2, 4), 10);
-      } else if (/^\d{2}:\d{2}$/.test(tStr)) {
+      } else if (/^\d{1,2}:\d{1,2}$/.test(tStr)) {
         const parts = tStr.split(':');
         hour = parseInt(parts[0], 10);
         minute = parseInt(parts[1], 10);
@@ -330,20 +330,24 @@
 
       const now = getNow();
       let dt = new Date(now.getFullYear(), month, day, hour, minute, 0);
-      if (dt < now.getTime() - 24 * 60 * 60 * 1000) {
-        dt.setFullYear(now.getFullYear() + 1);
-      }
       return dt;
     }
 
-    // 排序逻辑：有具体开赛时间的按时间升序，没有完整时间的排在最底部
-    function sortRowsByTime() {
+    // 重新排序DOM元素，避免重构DOM导致输入框内容丢失
+    function reorderDomRows() {
       rowsData.sort((a, b) => {
         if (!a.matchDate && !b.matchDate) return 0;
         if (!a.matchDate) return 1;
         if (!b.matchDate) return -1;
         return a.matchDate.getTime() - b.matchDate.getTime();
       });
+
+      const tbody = document.getElementById('match-table-body');
+      rowsData.forEach(row => {
+        const tr = document.getElementById(`row-${row.id}`);
+        if (tr) tbody.appendChild(tr);
+      });
+      updateRowIndexes();
     }
 
     function updateRowIndexes() {
@@ -354,18 +358,6 @@
           indexTd.innerText = index + 1;
         }
       });
-    }
-
-    function renderAllRows() {
-      sortRowsByTime();
-      const tbody = document.getElementById('match-table-body');
-      tbody.innerHTML = '';
-
-      rowsData.forEach((row, index) => {
-        appendRowToDOM(row, index + 1);
-      });
-
-      updateMatchCount();
     }
 
     function appendRowToDOM(row, indexNum) {
@@ -410,7 +402,6 @@
       updateDynamicPart(row);
     }
 
-    // 点击添加：日期自动算次日（明天），时间置空，稳稳停在最后一行
     function addMatchRow() {
       requestNotificationPermission();
       rowIdCounter++;
@@ -422,8 +413,8 @@
 
       const rowObj = {
         id: id,
-        datePart: defaultDateStr, // 默认次日日期
-        timePart: "",            // 纯空白时间，无占位文字
+        datePart: defaultDateStr,
+        timePart: "",
         matchNum: "",
         league: "",
         isMonitoring: false,
@@ -486,7 +477,6 @@
       saveData();
     }
 
-    // 只有当你输入完时间，点击别处失焦（或按 Enter）后，才会重新进行全表时间升序排列
     function handleTimeConfirm(id) {
       requestNotificationPermission();
       const row = rowsData.find(r => r.id === id);
@@ -521,7 +511,7 @@
       }
       
       saveData();
-      renderAllRows(); // 输入完成后触发自动排序并更新序号
+      reorderDomRows(); // 仅重新排列 HTML 节点，绝不重刷页面，完全保留输入的字符！
     }
 
     function updateMatchNum(id, val) {
@@ -618,7 +608,11 @@
       requestNotificationPermission();
       const hasHistory = loadData();
       if (hasHistory) {
-        renderAllRows();
+        rowsData.forEach((row, index) => {
+          appendRowToDOM(row, index + 1);
+        });
+        reorderDomRows();
+        updateMatchCount();
       } else {
         addMatchRow();
       }
