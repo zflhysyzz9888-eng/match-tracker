@@ -150,7 +150,7 @@
   <div class="top-bar">
     <div>
       <span style="font-size: 20px; font-weight: bold;">赛事事件流监控台</span>
-      <span id="total-count" style="color: #2ecc71; margin-left: 10px; font-weight: bold;">（总计 0 场）</span>
+      <span id="total-count" style="color: #2ecc71; margin-left: 10px; font-weight: bold;">（总计 0 场次，比赛数量 0 场）</span>
     </div>
     <button class="btn-add" onclick="addMatchRow()">+ 添加新比赛场次</button>
   </div>
@@ -178,9 +178,10 @@
 
   <script>
     const TIME_FORMAT_REGEX = /^(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/;
+    const DIGIT_FORMAT_REGEX = /^(\d{2})(\d{2})(\d{2})(\d{2})$/; // 匹配纯数字输入，如 07241500
     const BEFORE_MATCH_FOR_EARLY = 15;
     const AFTER_MATCH_FOR_MID = 45;
-    const STORAGE_KEY = "MATCH_TRACKER_DATA";
+    const STORAGE_KEY = "MATCH_TRACKER_DATA_V2";
 
     let rowsData = [];
     let rowIdCounter = 0;
@@ -198,7 +199,6 @@
       return `${m}/${d} ${hh}:${mm}`;
     }
 
-    // 本地缓存数据读取与保存
     function saveData() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(rowsData));
     }
@@ -209,19 +209,16 @@
         try {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            rowsData = parsed.map(r => {
-              // 恢复 Date 对象类型
-              return {
-                ...r,
-                earlyOddsDate: r.earlyOddsDate ? new Date(r.earlyOddsDate) : null,
-                midDate: r.midDate ? new Date(r.midDate) : null
-              };
-            });
+            rowsData = parsed.map(r => ({
+              ...r,
+              earlyOddsDate: r.earlyOddsDate ? new Date(r.earlyOddsDate) : null,
+              midDate: r.midDate ? new Date(r.midDate) : null
+            }));
             rowIdCounter = Math.max(...rowsData.map(r => r.id), 0);
             return true;
           }
         } catch (e) {
-          console.error("加载本地缓存失败:", e);
+          console.error("数据加载异常:", e);
         }
       }
       return false;
@@ -240,9 +237,7 @@
         gain.connect(ctx.destination);
         osc.start();
         osc.stop(ctx.currentTime + 0.18);
-      } catch (e) {
-        console.log("Audio play blocked: " + e.message);
-      }
+      } catch (e) {}
     }
 
     function triggerAlert(matchNum, nodeName) {
@@ -258,6 +253,40 @@
       container.appendChild(toast);
     }
 
+    // 增强版解析：既支持纯数字（07241500），也支持标准格式（07/24 15:00）
+    function parseMatchTime(timeStr) {
+      if (!timeStr) return null;
+      let str = timeStr.trim();
+      let month, day, hour, minute;
+
+      // 1. 先尝试解析纯数字 (如 07241500)
+      const digitMatch = str.match(DIGIT_FORMAT_REGEX);
+      if (digitMatch) {
+        month = parseInt(digitMatch[1], 10) - 1;
+        day = parseInt(digitMatch[2], 10);
+        hour = parseInt(digitMatch[3], 10);
+        minute = parseInt(digitMatch[4], 10);
+      } else {
+        // 2. 尝试解析标准带符号格式 (如 07/24 15:00)
+        const stdMatch = str.match(TIME_FORMAT_REGEX);
+        if (stdMatch) {
+          month = parseInt(stdMatch[1], 10) - 1;
+          day = parseInt(stdMatch[2], 10);
+          hour = parseInt(stdMatch[3], 10);
+          minute = parseInt(stdMatch[4], 10);
+        } else {
+          return null;
+        }
+      }
+
+      const now = getNow();
+      let dt = new Date(now.getFullYear(), month, day, hour, minute, 0);
+      if (dt < now.getTime() - 24 * 60 * 60 * 1000) {
+        dt.setFullYear(now.getFullYear() + 1);
+      }
+      return dt;
+    }
+
     function addMatchRow() {
       rowIdCounter++;
       const id = rowIdCounter;
@@ -271,61 +300,75 @@
         timeStr: formatDate(defaultTime),
         matchNum: "", // 默认为空白
         league: "",
-        isMonitoring: false,
+        isMonitoring: true,
         earlyOddsDate: null,
         midDate: null,
         earlyTriggered: false,
         midTriggered: false
       };
 
+      const dt = parseMatchTime(rowObj.timeStr);
+      if (dt) {
+        rowObj.earlyOddsDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
+        rowObj.midDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
+      }
+
       rowsData.push(rowObj);
-      renderTableStructure();
-      handleTimeConfirm(id, true);
+      renderSingleRowDOM(rowObj);
+      updateMatchCount();
       saveData();
     }
 
     function removeMatchRow(id) {
       rowsData = rowsData.filter(r => r.id !== id);
-      renderTableStructure();
+      const tr = document.getElementById(`row-${id}`);
+      if (tr) tr.remove();
       updateMatchCount();
       saveData();
     }
 
-    function parseMatchTime(timeStr) {
-      if (!timeStr) return null;
-      const match = timeStr.trim().match(TIME_FORMAT_REGEX);
-      if (!match) return null;
-      const now = getNow();
-      const month = parseInt(match[1], 10) - 1;
-      const day = parseInt(match[2], 10);
-      const hour = parseInt(match[3], 10);
-      const minute = parseInt(match[4], 10);
-
-      let dt = new Date(now.getFullYear(), month, day, hour, minute, 0);
-      if (dt < now.getTime() - 24 * 60 * 60 * 1000) {
-        dt.setFullYear(now.getFullYear() + 1);
-      }
-      return dt;
-    }
-
-    function handleTimeConfirm(id, isInitialAdd = false) {
+    function handleTimeInput(id, val) {
       const row = rowsData.find(r => r.id === id);
       if (!row) return;
+      row.timeStr = val;
+      row.isMonitoring = false;
 
-      const inputElem = document.getElementById(`input-time-${id}`);
-      if (inputElem) {
-        row.timeStr = inputElem.value.trim();
+      const earlyTimeSpan = document.getElementById(`row-${id}-early-time`);
+      const midTimeSpan = document.getElementById(`row-${id}-mid-time`);
+      const earlyCdCell = document.getElementById(`row-${id}-early-cd-cell`);
+      const midCdCell = document.getElementById(`row-${id}-mid-cd-cell`);
+
+      const dt = parseMatchTime(val);
+      if (dt) {
+        const eDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
+        const mDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
+        if (earlyTimeSpan) earlyTimeSpan.innerText = formatDate(eDate);
+        if (midTimeSpan) midTimeSpan.innerText = formatDate(mDate);
+      } else {
+        if (earlyTimeSpan) earlyTimeSpan.innerText = "格式错误";
+        if (midTimeSpan) midTimeSpan.innerText = "格式错误";
       }
+
+      if (earlyCdCell) earlyCdCell.innerHTML = `<span class="box-cell bg-warning">请回车确认</span>`;
+      if (midCdCell) midCdCell.innerHTML = `<span class="box-cell bg-warning">请回车确认</span>`;
+      saveData();
+    }
+
+    function handleTimeConfirm(id) {
+      const row = rowsData.find(r => r.id === id);
+      if (!row) return;
 
       const dt = parseMatchTime(row.timeStr);
       if (!dt) {
         row.isMonitoring = false;
-        row.earlyOddsDate = null;
-        row.midDate = null;
-        renderTableStructure();
         saveData();
         return;
       }
+
+      // 格式化输出为规范的 MM/DD HH:mm，并反显到输入框中
+      row.timeStr = formatDate(dt);
+      const inputElem = document.getElementById(`input-time-${id}`);
+      if (inputElem) inputElem.value = row.timeStr;
 
       row.earlyOddsDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
       row.midDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
@@ -333,19 +376,18 @@
       row.earlyTriggered = false;
       row.midTriggered = false;
 
-      if (!isInitialAdd) {
-        const now = getNow();
-        const numDisplay = row.matchNum.trim() || "-";
-        if (now >= row.midDate) {
-          row.midTriggered = true;
-          row.earlyTriggered = true;
-          triggerAlert(numDisplay, "中场时间(已过期)");
-        } else if (now >= row.earlyOddsDate) {
-          row.earlyTriggered = true;
-          triggerAlert(numDisplay, "初盘时间(已过期)");
-        }
+      const now = getNow();
+      const numDisplay = row.matchNum.trim() || "-";
+      if (now >= row.midDate) {
+        row.midTriggered = true;
+        row.earlyTriggered = true;
+        triggerAlert(numDisplay, "中场时间(已过期)");
+      } else if (now >= row.earlyOddsDate) {
+        row.earlyTriggered = true;
+        triggerAlert(numDisplay, "初盘时间(已过期)");
       }
-      renderTableStructure();
+      
+      updateDynamicPart(row);
       saveData();
     }
 
@@ -353,6 +395,7 @@
       const row = rowsData.find(r => r.id === id);
       if (row) {
         row.matchNum = val;
+        updateMatchCount();
         saveData();
       }
     }
@@ -365,69 +408,50 @@
       }
     }
 
-    function markTimeAsModified(id) {
-      const row = rowsData.find(r => r.id === id);
-      if (row && row.isMonitoring) {
-        row.isMonitoring = false;
-        // 仅局部更新倒计时单元格为“请回车确认”，保留输入框焦点
-        const earlyCell = document.getElementById(`row-${id}-early-cd-cell`);
-        const midCell = document.getElementById(`row-${id}-mid-cd-cell`);
-        if (earlyCell) earlyCell.innerHTML = `<span class="box-cell bg-warning">请回车确认</span>`;
-        if (midCell) midCell.innerHTML = `<span class="box-cell bg-warning">请回车确认</span>`;
-        saveData();
-      }
-    }
-
-    function renderTableStructure() {
+    function renderSingleRowDOM(row) {
       const tbody = document.getElementById('match-table-body');
-      tbody.innerHTML = '';
+      const tr = document.createElement('tr');
+      tr.id = `row-${row.id}`;
 
-      rowsData.forEach(row => {
-        const tr = document.createElement('tr');
-        tr.id = `row-${row.id}`;
+      let earlyTimeText = "-";
+      let midTimeText = "-";
+      const dt = parseMatchTime(row.timeStr);
+      if (dt) {
+        const eDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
+        const mDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
+        earlyTimeText = formatDate(eDate);
+        midTimeText = formatDate(mDate);
+      }
 
-        let earlyTimeText = "-";
-        let midTimeText = "-";
-        
-        const dt = parseMatchTime(row.timeStr);
-        if (dt) {
-            const eDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
-            const mDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
-            earlyTimeText = formatDate(eDate);
-            midTimeText = formatDate(mDate);
-        } else {
-            earlyTimeText = "格式错误";
-            midTimeText = "格式错误";
-        }
-
-        tr.innerHTML = `
-          <td>
-            <input type="text" id="input-time-${row.id}" class="font-en" value="${row.timeStr}" 
-              oninput="markTimeAsModified(${row.id})"
-              onkeydown="if(event.key==='Enter') handleTimeConfirm(${row.id})">
-          </td>
-          <td>
-            <input type="text" class="font-en" value="${row.matchNum}" 
-              oninput="updateMatchNum(${row.id}, this.value)">
-          </td>
-          <td>
-            <input type="text" class="font-zh" value="${row.league}" 
-              oninput="updateLeague(${row.id}, this.value)">
-          </td>
-          <td><span class="box-cell bg-early-time font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
-          <td id="row-${row.id}-early-cd-cell"></td>
-          <td><span class="box-cell bg-mid-time font-en" id="row-${row.id}-mid-time">${midTimeText}</span></td>
-          <td id="row-${row.id}-mid-cd-cell"></td>
-          <td><button class="btn-del" onclick="removeMatchRow(${row.id})">删除</button></td>
-        `;
-        tbody.appendChild(tr);
-        updateDynamicPart(row);
-      });
-      updateMatchCount();
+      tr.innerHTML = `
+        <td>
+          <input type="text" id="input-time-${row.id}" class="font-en" value="${row.timeStr}" 
+            oninput="handleTimeInput(${row.id}, this.value)"
+            onkeydown="if(event.key==='Enter') handleTimeConfirm(${row.id})">
+        </td>
+        <td>
+          <input type="text" class="font-en" value="${row.matchNum}" 
+            oninput="updateMatchNum(${row.id}, this.value)">
+        </td>
+        <td>
+          <input type="text" class="font-zh" value="${row.league}" 
+            oninput="updateLeague(${row.id}, this.value)">
+        </td>
+        <td><span class="box-cell bg-early-time font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
+        <td id="row-${row.id}-early-cd-cell"></td>
+        <td><span class="box-cell bg-mid-time font-en" id="row-${row.id}-mid-time">${midTimeText}</span></td>
+        <td id="row-${row.id}-mid-cd-cell"></td>
+        <td><button class="btn-del" onclick="removeMatchRow(${row.id})">删除</button></td>
+      `;
+      tbody.appendChild(tr);
+      updateDynamicPart(row);
     }
 
     function updateMatchCount() {
-      document.getElementById('total-count').innerText = `（总计 ${rowsData.length} 场）`;
+      const totalRows = rowsData.length;
+      // 统计已填入“比赛场数”的内容非空的场次
+      const filledMatchesCount = rowsData.filter(r => r.matchNum && r.matchNum.trim() !== "").length;
+      document.getElementById('total-count').innerText = `（总计 ${totalRows} 场次，比赛数量 ${filledMatchesCount} 场）`;
     }
 
     function updateDynamicPart(row) {
@@ -442,7 +466,6 @@
         const now = getNow();
         const numDisplay = row.matchNum.trim() || "-";
 
-        // 初盘倒计时
         if (now < row.earlyOddsDate) {
           const diff = Math.floor((row.earlyOddsDate - now) / 1000);
           const h = formatDigit(Math.floor(diff / 3600));
@@ -458,7 +481,6 @@
           earlyCdHtml = `<span class="box-cell bg-expired font-zh">初盘已开始</span>`;
         }
 
-        // 中场倒计时
         if (now < row.midDate) {
           const diff = Math.floor((row.midDate - now) / 1000);
           const h = formatDigit(Math.floor(diff / 3600));
@@ -479,23 +501,20 @@
       if (midCell.innerHTML !== midCdHtml) midCell.innerHTML = midCdHtml;
     }
 
-    // 1秒定时更新
     setInterval(() => {
       const now = getNow();
       const timeStr = `${formatDate(now)}:${formatDigit(now.getSeconds())}`;
       const status = document.getElementById('status-bar');
       if (status) status.innerText = `当前时间: ${timeStr} | 追踪场次: ${rowsData.length}`;
       
-      rowsData.forEach(row => {
-        updateDynamicPart(row);
-      });
+      rowsData.forEach(row => updateDynamicPart(row));
     }, 1000);
 
-    // 初始化：加载历史数据或新建默认行
     window.onload = function() {
       const hasHistory = loadData();
       if (hasHistory) {
-        renderTableStructure();
+        rowsData.forEach(row => renderSingleRowDOM(row));
+        updateMatchCount();
       } else {
         addMatchRow();
       }
