@@ -117,7 +117,7 @@
       z-index: 999;
     }
 
-    /* 右下角弹窗通知 */
+    /* 页面内的备用弹窗样式 */
     .alert-toast {
       position: fixed;
       bottom: 50px;
@@ -187,6 +187,12 @@
     let rowsData = [];
     let rowIdCounter = 0;
 
+    // Web Worker 用于防止后台/最小化时定时器被浏览器冻结
+    const workerBlob = new Blob([`
+      setInterval(() => { postMessage('tick'); }, 1000);
+    `], { type: 'text/javascript' });
+    const timerWorker = new Worker(URL.createObjectURL(workerBlob));
+
     function getNow() { return new Date(); }
 
     function formatDigit(num) { return num < 10 ? '0' + num : num; }
@@ -198,6 +204,13 @@
       const hh = formatDigit(date.getHours());
       const mm = formatDigit(date.getMinutes());
       return `${m}/${d} ${hh}:${mm}`;
+    }
+
+    // 请求系统桌面通知权限
+    function requestNotificationPermission() {
+      if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+        Notification.requestPermission();
+      }
     }
 
     function saveData() {
@@ -225,29 +238,62 @@
       return false;
     }
 
-    function playBeep() {
+    // 持续 10 秒的滴滴警报声 (每0.5秒发声一次)
+    function playBeep10Sec() {
       try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
         if (ctx.state === 'suspended') ctx.resume();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(1650, ctx.currentTime);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.18);
-      } catch (e) {}
+
+        const startTime = ctx.currentTime;
+        const duration = 10;
+        const interval = 0.5;
+
+        for (let i = 0; i < duration / interval; i++) {
+          const time = startTime + (i * interval);
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(1650, time);
+          gain.gain.setValueAtTime(0.15, time);
+          gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+          
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          
+          osc.start(time);
+          osc.stop(time + 0.18);
+        }
+      } catch (e) {
+        console.log("Audio Error: " + e.message);
+      }
     }
 
+    // 触发桌面弹窗 + 声音提醒
     function triggerAlert(matchNum, nodeName) {
-      playBeep();
+      playBeep10Sec();
+
+      const title = "⏰ 赛事时间提醒";
+      const bodyText = `比赛场数：【${matchNum}】\n阶段：【${nodeName}】\n状态：已到达或已过期！`;
+
+      if ("Notification" in window && Notification.permission === "granted") {
+        const notification = new Notification(title, {
+          body: bodyText,
+          requireInteraction: true
+        });
+        notification.onclick = function() {
+          window.focus();
+          notification.close();
+        };
+      }
+
       const container = document.getElementById('alert-container');
       const toast = document.createElement('div');
       toast.className = 'alert-toast';
       toast.innerHTML = `
-        <h3>⏰ 赛事时间提醒</h3>
+        <h3>${title}</h3>
         <p>⏰ 赛事倒计时结束<br>比赛场数：【${matchNum}】<br>阶段：【${nodeName}】<br>状态：已到达或已过期！</p>
         <button onclick="this.parentElement.remove()">我知道了</button>
       `;
@@ -262,7 +308,6 @@
 
       let month, day, hour, minute;
 
-      // 解析日期：支持 0725 或 07/25
       if (/^\d{4}$/.test(dStr)) {
         month = parseInt(dStr.substring(0, 2), 10) - 1;
         day = parseInt(dStr.substring(2, 4), 10);
@@ -274,7 +319,6 @@
         return null;
       }
 
-      // 解析时间：支持 1500 或 15:00
       if (/^\d{4}$/.test(tStr)) {
         hour = parseInt(tStr.substring(0, 2), 10);
         minute = parseInt(tStr.substring(2, 4), 10);
@@ -295,6 +339,7 @@
     }
 
     function addMatchRow() {
+      requestNotificationPermission();
       rowIdCounter++;
       const id = rowIdCounter;
       
@@ -306,7 +351,7 @@
         id: id,
         datePart: `${formatDigit(defaultTime.getMonth() + 1)}/${formatDigit(defaultTime.getDate())}`,
         timePart: `${formatDigit(defaultTime.getHours())}:${formatDigit(defaultTime.getMinutes())}`,
-        matchNum: "", // 默认为空白
+        matchNum: "",
         league: "",
         isMonitoring: true,
         earlyOddsDate: null,
@@ -335,6 +380,7 @@
       saveData();
     }
 
+    // 输入框输入时，暂存数据并显示“待确认”提示
     function handleTimeInput(id) {
       const row = rowsData.find(r => r.id === id);
       if (!row) return;
@@ -363,12 +409,14 @@
         if (midTimeSpan) midTimeSpan.innerText = "格式错误";
       }
 
-      if (earlyCdCell) earlyCdCell.innerHTML = `<span class="box-cell bg-warning">请回车确认</span>`;
-      if (midCdCell) midCdCell.innerHTML = `<span class="box-cell bg-warning">请回车确认</span>`;
+      if (earlyCdCell) earlyCdCell.innerHTML = `<span class="box-cell bg-warning">待确认</span>`;
+      if (midCdCell) midCdCell.innerHTML = `<span class="box-cell bg-warning">待确认</span>`;
       saveData();
     }
 
+    // 确认时间修改（支持按 Enter 回车 OR 鼠标点击空白处/失焦自动确认）
     function handleTimeConfirm(id) {
+      requestNotificationPermission();
       const row = rowsData.find(r => r.id === id);
       if (!row) return;
 
@@ -379,7 +427,6 @@
         return;
       }
 
-      // 规范格式化回显
       row.datePart = `${formatDigit(dt.getMonth() + 1)}/${formatDigit(dt.getDate())}`;
       row.timePart = `${formatDigit(dt.getHours())}:${formatDigit(dt.getMinutes())}`;
 
@@ -445,10 +492,12 @@
         <td>
           <input type="text" id="input-date-${row.id}" class="font-en time-date-input" value="${row.datePart}" placeholder="0725"
             oninput="handleTimeInput(${row.id})"
-            onkeydown="if(event.key==='Enter') handleTimeConfirm(${row.id})">
+            onblur="handleTimeConfirm(${row.id})"
+            onkeydown="if(event.key==='Enter') { this.blur(); handleTimeConfirm(${row.id}); }">
           <input type="text" id="input-time-${row.id}" class="font-en time-clock-input" value="${row.timePart}" placeholder="1500"
             oninput="handleTimeInput(${row.id})"
-            onkeydown="if(event.key==='Enter') handleTimeConfirm(${row.id})">
+            onblur="handleTimeConfirm(${row.id})"
+            onkeydown="if(event.key==='Enter') { this.blur(); handleTimeConfirm(${row.id}); }">
         </td>
         <td>
           <input type="text" class="font-en full-width-input" value="${row.matchNum}" 
@@ -470,12 +519,9 @@
 
     function updateMatchCount() {
       const totalRows = rowsData.length;
-      
-      // 智能提取并计算输入的比赛场数之和
       let totalMatchSum = 0;
       rowsData.forEach(r => {
         if (r.matchNum) {
-          // 提取所有数字块并求和
           const nums = r.matchNum.match(/\d+/g);
           if (nums) {
             nums.forEach(n => {
@@ -493,8 +539,8 @@
       const midCell = document.getElementById(`row-${row.id}-mid-cd-cell`);
       if (!earlyCell || !midCell) return;
 
-      let earlyCdHtml = `<span class="box-cell bg-warning">请回车确认</span>`;
-      let midCdHtml = `<span class="box-cell bg-warning">请回车确认</span>`;
+      let earlyCdHtml = `<span class="box-cell bg-warning">待确认</span>`;
+      let midCdHtml = `<span class="box-cell bg-warning">待确认</span>`;
 
       if (row.isMonitoring && row.earlyOddsDate && row.midDate) {
         const now = getNow();
@@ -535,16 +581,18 @@
       if (midCell.innerHTML !== midCdHtml) midCell.innerHTML = midCdHtml;
     }
 
-    setInterval(() => {
+    // 监听 Web Worker 定时器，确保后台/最小化时也能 1 秒刷新一次
+    timerWorker.onmessage = function() {
       const now = getNow();
       const timeStr = `${formatDate(now)}:${formatDigit(now.getSeconds())}`;
       const status = document.getElementById('status-bar');
       if (status) status.innerText = `当前时间: ${timeStr} | 追踪场次: ${rowsData.length}`;
       
       rowsData.forEach(row => updateDynamicPart(row));
-    }, 1000);
+    };
 
     window.onload = function() {
+      requestNotificationPermission();
       const hasHistory = loadData();
       if (hasHistory) {
         rowsData.forEach(row => renderSingleRowDOM(row));
