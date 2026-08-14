@@ -333,7 +333,6 @@
       return dt;
     }
 
-    // 重新排序DOM元素，避免重构DOM导致输入框内容丢失
     function reorderDomRows() {
       rowsData.sort((a, b) => {
         if (!a.matchDate && !b.matchDate) return 0;
@@ -507,11 +506,11 @@
         triggerAlert(numDisplay, "中场时间(已过期)");
       } else if (now >= row.earlyOddsDate) {
         row.earlyTriggered = true;
-        triggerAlert(numDisplay, "初盘时间(已过期)");
+        // 初盘时间到达/过期时不触发提醒
       }
       
       saveData();
-      reorderDomRows(); // 仅重新排列 HTML 节点，绝不重刷页面，完全保留输入的字符！
+      reorderDomRows();
     }
 
     function updateMatchNum(id, val) {
@@ -569,7 +568,7 @@
         } else {
           if (!row.earlyTriggered) {
             row.earlyTriggered = true;
-            triggerAlert(numDisplay, "初盘时间");
+            // 初盘到达时不触发报警弹窗，仅标记并保存
             saveData();
           }
           earlyCdHtml = `<span class="box-cell bg-expired font-zh">初盘已开始</span>`;
