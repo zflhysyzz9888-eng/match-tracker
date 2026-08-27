@@ -89,7 +89,8 @@
     .bg-mid-cd { background-color: #fef9e7; color: #d35400; }
     .bg-warning { background-color: #fcf3cf; color: #d35400; font-family: var(--font-zh); }
     .bg-expired { background-color: #c0392b; color: white; }
-    .bg-in-progress { background-color: #d5f5e3; color: #1e8449; font-family: var(--font-zh); }
+    .bg-in-progress { background-color: #2ecc71; color: white; font-family: var(--font-zh); } /* 新增：进行中绿底样式 */
+    
     .btn-del {
       background-color: #e74c3c;
       color: white;
@@ -170,17 +171,21 @@
   </div>
   <div id="alert-container"></div>
   <div class="status-bar" id="status-bar">当前时间: --/-- --:--:-- | 追踪场次: 0</div>
+
   <script>
-    const BEFORE_MATCH_FOR_EARLY = 30;   // 初盘：开赛前30分钟
-    const AFTER_MATCH_FOR_MID = 45;      // 中场：开赛后45分钟
-    const MID_DURATION_MIN = 20;         // 中场持续20分钟后结束
-    const STORAGE_KEY = "MATCH_TRACKER_DATA_V5";
+    const BEFORE_MATCH_FOR_EARLY = 30; // 调整为前 30 分钟
+    const AFTER_MATCH_FOR_MID = 45;    // 中场开始时间
+    const MID_DURATION = 20;           // 中场持续 20 分钟
+    const STORAGE_KEY = "MATCH_TRACKER_DATA_V4";
+    
     let rowsData = [];
     let rowIdCounter = 0;
+
     const workerBlob = new Blob([`
       setInterval(() => { postMessage('tick'); }, 1000);
     `], { type: 'text/javascript' });
     const timerWorker = new Worker(URL.createObjectURL(workerBlob));
+
     function getNow() { return new Date(); }
     function formatDigit(num) { return num < 10 ? '0' + num : num; }
     function formatDate(date) {
@@ -191,14 +196,17 @@
       const mm = formatDigit(date.getMinutes());
       return `${m}/${d} ${hh}:${mm}`;
     }
+
     function requestNotificationPermission() {
       if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
         Notification.requestPermission();
       }
     }
+
     function saveData() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(rowsData));
     }
+
     function loadData() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -209,7 +217,8 @@
               ...r,
               matchDate: r.matchDate ? new Date(r.matchDate) : null,
               earlyOddsDate: r.earlyOddsDate ? new Date(r.earlyOddsDate) : null,
-              midDate: r.midDate ? new Date(r.midDate) : null
+              midDate: r.midDate ? new Date(r.midDate) : null,
+              midEndDate: r.midEndDate ? new Date(r.midEndDate) : null
             }));
             rowIdCounter = Math.max(...rowsData.map(r => r.id), 0);
             return true;
@@ -220,6 +229,7 @@
       }
       return false;
     }
+
     function playBeep10Sec() {
       try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -249,10 +259,11 @@
         console.log("Audio Error: " + e.message);
       }
     }
+
     function triggerAlert(matchNum, nodeName) {
       playBeep10Sec();
       const title = "⏰ 赛事时间提醒";
-      const bodyText = `比赛场数：【${matchNum}】\n阶段：【${nodeName}】\n状态：已到达或已过期！`;
+      const bodyText = `比赛场数：【${matchNum}】\n阶段：【${nodeName}】\n状态：已到达或已触发！`;
       if ("Notification" in window && Notification.permission === "granted") {
         const notification = new Notification(title, {
           body: bodyText,
@@ -268,17 +279,19 @@
       toast.className = 'alert-toast';
       toast.innerHTML = `
         <h3>${title}</h3>
-        <p>⏰ 赛事倒计时结束<br>比赛场数：【${matchNum}】<br>阶段：【${nodeName}】<br>状态：已到达或已过期！</p>
+        <p>⏰ 赛事倒计时结束<br>比赛场数：【${matchNum}】<br>阶段：【${nodeName}】<br>状态：已到达或已触发！</p>
         <button onclick="this.parentElement.remove()">我知道了</button>
       `;
       container.appendChild(toast);
     }
+
     function parseDateAndTimeStr(dateStr, timeStr) {
       if (!dateStr || !timeStr) return null;
       let dStr = dateStr.trim();
       let tStr = timeStr.trim();
       if (!dStr || !tStr) return null;
       let month, day, hour, minute;
+      
       if (/^\d{4}$/.test(dStr)) {
         month = parseInt(dStr.substring(0, 2), 10) - 1;
         day = parseInt(dStr.substring(2, 4), 10);
@@ -289,6 +302,7 @@
       } else {
         return null;
       }
+      
       if (/^\d{4}$/.test(tStr)) {
         hour = parseInt(tStr.substring(0, 2), 10);
         minute = parseInt(tStr.substring(2, 4), 10);
@@ -299,10 +313,12 @@
       } else {
         return null;
       }
+      
       const now = getNow();
       let dt = new Date(now.getFullYear(), month, day, hour, minute, 0);
       return dt;
     }
+
     function reorderDomRows() {
       rowsData.sort((a, b) => {
         if (!a.matchDate && !b.matchDate) return 0;
@@ -317,6 +333,7 @@
       });
       updateRowIndexes();
     }
+
     function updateRowIndexes() {
       const tbody = document.getElementById('match-table-body');
       Array.from(tbody.children).forEach((tr, index) => {
@@ -326,6 +343,7 @@
         }
       });
     }
+
     function appendRowToDOM(row, indexNum) {
       const tbody = document.getElementById('match-table-body');
       const tr = document.createElement('tr');
@@ -349,11 +367,11 @@
             onkeydown="if(event.key==='Enter') { this.blur(); }">
         </td>
         <td>
-          <input type="text" class="font-en full-width-input" value="${row.matchNum}" 
+          <input type="text" class="font-en full-width-input" value="${row.matchNum}"
             oninput="updateMatchNum(${row.id}, this.value)">
         </td>
         <td>
-          <input type="text" class="font-zh full-width-input" value="${row.league}" 
+          <input type="text" class="font-zh full-width-input" value="${row.league}"
             oninput="updateLeague(${row.id}, this.value)">
         </td>
         <td><span class="box-cell bg-early-time font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
@@ -365,6 +383,7 @@
       tbody.appendChild(tr);
       updateDynamicPart(row);
     }
+
     function addMatchRow() {
       requestNotificationPermission();
       rowIdCounter++;
@@ -382,6 +401,7 @@
         matchDate: null,
         earlyOddsDate: null,
         midDate: null,
+        midEndDate: null,
         earlyTriggered: false,
         midTriggered: false
       };
@@ -392,6 +412,7 @@
       updateMatchCount();
       saveData();
     }
+
     function removeMatchRow(id) {
       rowsData = rowsData.filter(r => r.id !== id);
       const tr = document.getElementById(`row-${id}`);
@@ -400,6 +421,7 @@
       updateMatchCount();
       saveData();
     }
+
     function handleTimeInput(id) {
       const row = rowsData.find(r => r.id === id);
       if (!row) return;
@@ -417,6 +439,10 @@
         row.matchDate = dt;
         const eDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
         const mDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
+        const mEndDate = new Date(mDate.getTime() + MID_DURATION * 60 * 1000);
+        row.earlyOddsDate = eDate;
+        row.midDate = mDate;
+        row.midEndDate = mEndDate;
         if (earlyTimeSpan) earlyTimeSpan.innerText = formatDate(eDate);
         if (midTimeSpan) midTimeSpan.innerText = formatDate(mDate);
       } else {
@@ -428,6 +454,7 @@
       if (midCdCell) midCdCell.innerHTML = `<span class="box-cell bg-warning">待确认</span>`;
       saveData();
     }
+
     function handleTimeConfirm(id) {
       requestNotificationPermission();
       const row = rowsData.find(r => r.id === id);
@@ -438,29 +465,42 @@
         saveData();
         return;
       }
-      row.datePart = `${formatDigit(dt.getMonth() + 1)}/${formatDigit(dt.getDate())}`;
-      row.timePart = `${formatDigit(dt.getHours())}:${formatDigit(dt.getMinutes())}`;
+      
+      // 格式化并更新输入框展示
+      const formattedDate = `${formatDigit(dt.getMonth() + 1)}/${formatDigit(dt.getDate())}`;
+      const formattedTime = `${formatDigit(dt.getHours())}:${formatDigit(dt.getMinutes())}`;
+      row.datePart = formattedDate;
+      row.timePart = formattedTime;
+      
+      const dateElem = document.getElementById(`input-date-${id}`);
+      const timeElem = document.getElementById(`input-time-${id}`);
+      if (dateElem) dateElem.value = formattedDate;
+      if (timeElem) timeElem.value = formattedTime;
+
       row.matchDate = dt;
       row.earlyOddsDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
       row.midDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
+      row.midEndDate = new Date(row.midDate.getTime() + MID_DURATION * 60 * 1000);
       row.isMonitoring = true;
       row.earlyTriggered = false;
       row.midTriggered = false;
+
       const now = getNow();
       const numDisplay = row.matchNum.trim() || "-";
-      // 确认时如果已经过了对应节点，立即触发一次提醒
+
+      // 根据当前时间设置触发标记，避免重复提示
       if (now >= row.midDate) {
         row.midTriggered = true;
         row.earlyTriggered = true;
-        triggerAlert(numDisplay, "中场时间(已过期)");
       } else if (now >= row.earlyOddsDate) {
         row.earlyTriggered = true;
-        triggerAlert(numDisplay, "初盘时间(已过期)");
       }
-      
+
       saveData();
       reorderDomRows();
+      updateDynamicPart(row);
     }
+
     function updateMatchNum(id, val) {
       const row = rowsData.find(r => r.id === id);
       if (row) {
@@ -469,6 +509,7 @@
         saveData();
       }
     }
+
     function updateLeague(id, val) {
       const row = rowsData.find(r => r.id === id);
       if (row) {
@@ -476,9 +517,98 @@
         saveData();
       }
     }
+
     function updateMatchCount() {
       const totalRows = rowsData.length;
       let totalMatchSum = 0;
       rowsData.forEach(r => {
         if (r.matchNum) {
-          const nums = 
+          const nums = r.matchNum.match(/\d+/g);
+          if (nums) {
+            nums.forEach(n => {
+              totalMatchSum += parseInt(n, 10);
+            });
+          }
+        }
+      });
+      document.getElementById('total-count').innerText = `（总计 ${totalRows} 场次，比赛数量 ${totalMatchSum} 场）`;
+    }
+
+    function updateDynamicPart(row) {
+      const earlyCell = document.getElementById(`row-${row.id}-early-cd-cell`);
+      const midCell = document.getElementById(`row-${row.id}-mid-cd-cell`);
+      if (!earlyCell || !midCell) return;
+
+      let earlyCdHtml = `<span class="box-cell bg-warning">待确认</span>`;
+      let midCdHtml = `<span class="box-cell bg-warning">待确认</span>`;
+
+      if (row.isMonitoring && row.earlyOddsDate && row.midDate) {
+        const now = getNow();
+        const numDisplay = row.matchNum.trim() || "-";
+
+        // 初盘状态计算
+        if (now < row.earlyOddsDate) {
+          const diff = Math.floor((row.earlyOddsDate - now) / 1000);
+          const h = formatDigit(Math.floor(diff / 3600));
+          const m = formatDigit(Math.floor((diff % 3600) / 60));
+          const s = formatDigit(diff % 60);
+          earlyCdHtml = `<span class="box-cell bg-early-cd font-en">${h}:${m}:${s}</span>`;
+        } else if (now >= row.earlyOddsDate && now < row.matchDate) {
+          if (!row.earlyTriggered) {
+            row.earlyTriggered = true;
+            triggerAlert(numDisplay, "初盘开始");
+            saveData();
+          }
+          earlyCdHtml = `<span class="box-cell bg-in-progress">初盘进行中</span>`;
+        } else {
+          earlyCdHtml = `<span class="box-cell bg-expired font-zh">初盘结束</span>`;
+        }
+
+        // 中场状态计算
+        if (now < row.midDate) {
+          const diff = Math.floor((row.midDate - now) / 1000);
+          const h = formatDigit(Math.floor(diff / 3600));
+          const m = formatDigit(Math.floor((diff % 3600) / 60));
+          const s = formatDigit(diff % 60);
+          midCdHtml = `<span class="box-cell bg-mid-cd font-en">${h}:${m}:${s}</span>`;
+        } else if (now >= row.midDate && now < row.midEndDate) {
+          if (!row.midTriggered) {
+            row.midTriggered = true;
+            triggerAlert(numDisplay, "中场开始");
+            saveData();
+          }
+          midCdHtml = `<span class="box-cell bg-in-progress">中场进行中</span>`;
+        } else {
+          midCdHtml = `<span class="box-cell bg-expired font-zh">中场结束</span>`;
+        }
+      }
+
+      if (earlyCell.innerHTML !== earlyCdHtml) earlyCell.innerHTML = earlyCdHtml;
+      if (midCell.innerHTML !== midCdHtml) midCell.innerHTML = midCdHtml;
+    }
+
+    timerWorker.onmessage = function() {
+      const now = getNow();
+      const timeStr = `${formatDate(now)}:${formatDigit(now.getSeconds())}`;
+      const status = document.getElementById('status-bar');
+      if (status) status.innerText = `当前时间: ${timeStr} | 追踪场次: ${rowsData.length}`;
+      
+      rowsData.forEach(row => updateDynamicPart(row));
+    };
+
+    window.onload = function() {
+      requestNotificationPermission();
+      const hasHistory = loadData();
+      if (hasHistory) {
+        rowsData.forEach((row, index) => {
+          appendRowToDOM(row, index + 1);
+        });
+        reorderDomRows();
+        updateMatchCount();
+      } else {
+        addMatchRow();
+      }
+    }
+  </script>
+</body>
+</html>
