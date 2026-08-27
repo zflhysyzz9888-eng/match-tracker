@@ -89,7 +89,7 @@
     .bg-mid-cd { background-color: #fef9e7; color: #d35400; }
     .bg-warning { background-color: #fcf3cf; color: #d35400; font-family: var(--font-zh); }
     .bg-expired { background-color: #c0392b; color: white; }
-    .bg-in-progress { background-color: #2ecc71; color: white; font-family: var(--font-zh); } /* 新增：进行中绿底样式 */
+    .bg-in-progress { background-color: #2ecc71; color: white; } /* 绿底进行中 */
     
     .btn-del {
       background-color: #e74c3c;
@@ -173,7 +173,7 @@
   <div class="status-bar" id="status-bar">当前时间: --/-- --:--:-- | 追踪场次: 0</div>
 
   <script>
-    const BEFORE_MATCH_FOR_EARLY = 30; // 调整为前 30 分钟
+    const BEFORE_MATCH_FOR_EARLY = 30; // 前 30 分钟
     const AFTER_MATCH_FOR_MID = 45;    // 中场开始时间
     const MID_DURATION = 20;           // 中场持续 20 分钟
     const STORAGE_KEY = "MATCH_TRACKER_DATA_V4";
@@ -466,7 +466,6 @@
         return;
       }
       
-      // 格式化并更新输入框展示
       const formattedDate = `${formatDigit(dt.getMonth() + 1)}/${formatDigit(dt.getDate())}`;
       const formattedTime = `${formatDigit(dt.getHours())}:${formatDigit(dt.getMinutes())}`;
       row.datePart = formattedDate;
@@ -486,9 +485,6 @@
       row.midTriggered = false;
 
       const now = getNow();
-      const numDisplay = row.matchNum.trim() || "-";
-
-      // 根据当前时间设置触发标记，避免重复提示
       if (now >= row.midDate) {
         row.midTriggered = true;
         row.earlyTriggered = true;
@@ -546,39 +542,51 @@
         const now = getNow();
         const numDisplay = row.matchNum.trim() || "-";
 
-        // 初盘状态计算
+        // --- 1. 初盘状态逻辑 ---
         if (now < row.earlyOddsDate) {
+          // 距离初盘开始：HH:MM:SS 倒计时
           const diff = Math.floor((row.earlyOddsDate - now) / 1000);
           const h = formatDigit(Math.floor(diff / 3600));
           const m = formatDigit(Math.floor((diff % 3600) / 60));
           const s = formatDigit(diff % 60);
           earlyCdHtml = `<span class="box-cell bg-early-cd font-en">${h}:${m}:${s}</span>`;
         } else if (now >= row.earlyOddsDate && now < row.matchDate) {
+          // 初盘进行中：开赛倒计时 MM:SS
           if (!row.earlyTriggered) {
             row.earlyTriggered = true;
             triggerAlert(numDisplay, "初盘开始");
             saveData();
           }
-          earlyCdHtml = `<span class="box-cell bg-in-progress">初盘进行中</span>`;
+          const diff = Math.floor((row.matchDate - now) / 1000);
+          const m = formatDigit(Math.floor(diff / 60));
+          const s = formatDigit(diff % 60);
+          earlyCdHtml = `<span class="box-cell bg-in-progress font-en">初盘 ${m}:${s}</span>`;
         } else {
+          // 已开赛：初盘结束
           earlyCdHtml = `<span class="box-cell bg-expired font-zh">初盘结束</span>`;
         }
 
-        // 中场状态计算
+        // --- 2. 中场状态逻辑 ---
         if (now < row.midDate) {
+          // 距离中场开始：HH:MM:SS 倒计时
           const diff = Math.floor((row.midDate - now) / 1000);
           const h = formatDigit(Math.floor(diff / 3600));
           const m = formatDigit(Math.floor((diff % 3600) / 60));
           const s = formatDigit(diff % 60);
           midCdHtml = `<span class="box-cell bg-mid-cd font-en">${h}:${m}:${s}</span>`;
         } else if (now >= row.midDate && now < row.midEndDate) {
+          // 中场进行中（20分钟内）：中场倒计时 MM:SS
           if (!row.midTriggered) {
             row.midTriggered = true;
             triggerAlert(numDisplay, "中场开始");
             saveData();
           }
-          midCdHtml = `<span class="box-cell bg-in-progress">中场进行中</span>`;
+          const diff = Math.floor((row.midEndDate - now) / 1000);
+          const m = formatDigit(Math.floor(diff / 60));
+          const s = formatDigit(diff % 60);
+          midCdHtml = `<span class="box-cell bg-in-progress font-en">中场 ${m}:${s}</span>`;
         } else {
+          // 20分钟结束：中场结束
           midCdHtml = `<span class="box-cell bg-expired font-zh">中场结束</span>`;
         }
       }
