@@ -50,11 +50,11 @@
       border-collapse: collapse;
       background: white;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      min-width: 1300px;
+      min-width: 1200px;
     }
     th, td {
       border: 1px solid #e2e8f0;
-      padding: 6px 4px; /* 上下6px，左右缩小三分之一至4px */
+      padding: 6px 4px;
       text-align: center;
       vertical-align: middle;
     }
@@ -78,9 +78,8 @@
     .font-en { font-family: var(--font-en); }
     .font-zh { font-family: var(--font-zh); }
     
-    /* 缩小红框内胶囊格子的左右内边距（左右缩小1/3） */
     .box-cell {
-      padding: 5px 6px; /* 左右间距调小 */
+      padding: 5px 6px;
       border-radius: 4px;
       border: 1px solid #dcdde1;
       display: inline-block;
@@ -149,7 +148,6 @@
       cursor: pointer;
     }
 
-    /* 坐姿时间悬浮组件 */
     .sitting-timer-widget {
       position: fixed;
       bottom: 45px;
@@ -197,7 +195,7 @@
           <th style="width: 45px;">序号</th>
           <th style="width: 165px;">开赛时间（日期/时间）</th>
           <th style="width: 55px;">比赛场数</th>
-          <th style="width: 260px;">联赛</th> <!-- 拓宽联赛列以接纳缩小释放的空间 -->
+          <th style="width: 208px;">联赛</th> <!-- 从 260px 缩小 1/5 至 208px -->
           <th style="width: 130px;">初盘时间（t-30min）</th>
           <th style="width: 135px;">距离初盘倒计时</th>
           <th style="width: 130px;">中场时间（t+45min）</th>
@@ -212,22 +210,20 @@
   <div id="alert-container"></div>
   <div class="status-bar" id="status-bar">当前时间: --/-- --:--:-- | 追踪场次: 0</div>
 
-  <!-- 右下角坐姿计时组件 -->
   <div class="sitting-timer-widget" onclick="toggleSittingTimer()" title="点击开始/归零重置计时">
     <span class="label-zh">🪑 坐姿时间:</span>
     <span id="sitting-timer-display">00:00:00</span>
   </div>
 
   <script>
-    const BEFORE_MATCH_FOR_EARLY = 30; // 前 30 分钟
-    const AFTER_MATCH_FOR_MID = 45;    // 中场开始时间
-    const MID_DURATION = 20;           // 中场持续 20 分钟
+    const BEFORE_MATCH_FOR_EARLY = 30;
+    const AFTER_MATCH_FOR_MID = 45;
+    const MID_DURATION = 20;
     const STORAGE_KEY = "MATCH_TRACKER_DATA_V4";
     
     let rowsData = [];
     let rowIdCounter = 0;
 
-    // 坐姿计时器变量
     let sittingSeconds = 0;
     let sittingTimerRunning = false;
     let sittingIntervalId = null;
