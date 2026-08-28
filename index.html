@@ -50,7 +50,7 @@
       border-collapse: collapse;
       background: white;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      min-width: 1150px;
+      min-width: 1300px;
     }
     th, td {
       border: 1px solid #e2e8f0;
@@ -90,6 +90,7 @@
     .bg-warning { background-color: #fcf3cf; color: #d35400; font-family: var(--font-zh); }
     .bg-expired { background-color: #c0392b; color: white; }
     .bg-in-progress { background-color: #2ecc71; color: white; }
+    .bg-duration { background-color: #e8f8f5; color: #16a085; }
     
     .btn-del {
       background-color: #e74c3c;
@@ -189,12 +190,13 @@
         <tr>
           <th style="width: 50px;">序号</th>
           <th style="width: 180px;">开赛时间（日期/时间）</th>
-          <th style="width: 90px;">比赛场数</th>
-          <th style="width: 140px;">联赛</th>
+          <th style="width: 60px;">比赛场数</th>
+          <th style="width: 170px;">联赛</th>
           <th style="width: 160px;">初盘时间（t-30min）</th>
           <th style="width: 170px;">距离初盘倒计时</th>
           <th style="width: 160px;">中场时间（t+45min）</th>
           <th style="width: 170px;">距离中场倒计时</th>
+          <th style="width: 150px;">比赛持续时间</th>
           <th style="width: 90px;">操作</th>
         </tr>
       </thead>
@@ -404,7 +406,6 @@
 
       if (key === 'Enter') {
         event.preventDefault();
-        // 确认输入框逻辑
         if (colIndex === 0) handleTimeConfirm(rowId);
         
         targetColIndex = colIndex + 1;
@@ -419,7 +420,6 @@
         event.preventDefault();
         targetRowIndex = Math.min(trs.length - 1, currentRowIndex + 1);
       } else if (key === 'ArrowLeft') {
-        // 仅在光标处于开头时跳转，避免影响文本编辑
         if (event.target.selectionStart === 0) {
           event.preventDefault();
           if (colIndex > 0) {
@@ -432,7 +432,6 @@
           return;
         }
       } else if (key === 'ArrowRight') {
-        // 仅在光标处于末尾时跳转
         if (event.target.selectionEnd === event.target.value.length) {
           event.preventDefault();
           if (colIndex < 2) {
@@ -498,6 +497,7 @@
         <td id="row-${row.id}-early-cd-cell"></td>
         <td><span class="box-cell bg-mid-time font-en" id="row-${row.id}-mid-time">${midTimeText}</span></td>
         <td id="row-${row.id}-mid-cd-cell"></td>
+        <td id="row-${row.id}-duration-cell"></td>
         <td><button class="btn-del" onclick="removeMatchRow(${row.id})">删除</button></td>
       `;
       tbody.appendChild(tr);
@@ -554,6 +554,7 @@
       const midTimeSpan = document.getElementById(`row-${id}-mid-time`);
       const earlyCdCell = document.getElementById(`row-${id}-early-cd-cell`);
       const midCdCell = document.getElementById(`row-${id}-mid-cd-cell`);
+      const durationCell = document.getElementById(`row-${id}-duration-cell`);
       const dt = parseDateAndTimeStr(row.datePart, row.timePart);
       if (dt) {
         row.matchDate = dt;
@@ -572,6 +573,7 @@
       }
       if (earlyCdCell) earlyCdCell.innerHTML = `<span class="box-cell bg-warning">待确认</span>`;
       if (midCdCell) midCdCell.innerHTML = `<span class="box-cell bg-warning">待确认</span>`;
+      if (durationCell) durationCell.innerHTML = `<span class="box-cell bg-warning">待确认</span>`;
       saveData();
     }
 
@@ -653,12 +655,14 @@
     function updateDynamicPart(row) {
       const earlyCell = document.getElementById(`row-${row.id}-early-cd-cell`);
       const midCell = document.getElementById(`row-${row.id}-mid-cd-cell`);
-      if (!earlyCell || !midCell) return;
+      const durationCell = document.getElementById(`row-${row.id}-duration-cell`);
+      if (!earlyCell || !midCell || !durationCell) return;
 
       let earlyCdHtml = `<span class="box-cell bg-warning">待确认</span>`;
       let midCdHtml = `<span class="box-cell bg-warning">待确认</span>`;
+      let durationHtml = `<span class="box-cell bg-warning">待确认</span>`;
 
-      if (row.isMonitoring && row.earlyOddsDate && row.midDate) {
+      if (row.isMonitoring && row.earlyOddsDate && row.midDate && row.matchDate) {
         const now = getNow();
         const numDisplay = row.matchNum.trim() || "-";
 
@@ -703,13 +707,31 @@
         } else {
           midCdHtml = `<span class="box-cell bg-expired font-zh">中场结束</span>`;
         }
+
+        // --- 3. 比赛持续时间逻辑（2小时内正计时，超出为比赛结束） ---
+        const matchDurationMax = 2 * 60 * 60 * 1000; // 2 小时毫秒数
+        if (now < row.matchDate) {
+          durationHtml = `<span class="box-cell bg-early-time font-zh">未开始</span>`;
+        } else {
+          const elapsedMs = now - row.matchDate;
+          if (elapsedMs >= matchDurationMax) {
+            durationHtml = `<span class="box-cell bg-expired font-zh">比赛结束</span>`;
+          } else {
+            const diff = Math.floor(elapsedMs / 1000);
+            const h = formatDigit(Math.floor(diff / 3600));
+            const m = formatDigit(Math.floor((diff % 3600) / 60));
+            const s = formatDigit(diff % 60);
+            durationHtml = `<span class="box-cell bg-duration font-en">${h}:${m}:${s}</span>`;
+          }
+        }
       }
 
       if (earlyCell.innerHTML !== earlyCdHtml) earlyCell.innerHTML = earlyCdHtml;
       if (midCell.innerHTML !== midCdHtml) midCell.innerHTML = midCdHtml;
+      if (durationCell.innerHTML !== durationHtml) durationCell.innerHTML = durationHtml;
     }
 
-    // 坐姿计时控制逻辑（点击开始 / 再次点击重置并重新开始）
+    // 坐姿计时控制逻辑
     function toggleSittingTimer() {
       sittingSeconds = 0;
       updateSittingDisplay();
