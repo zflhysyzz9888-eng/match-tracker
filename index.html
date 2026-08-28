@@ -89,7 +89,7 @@
     .bg-mid-cd { background-color: #fef9e7; color: #d35400; }
     .bg-warning { background-color: #fcf3cf; color: #d35400; font-family: var(--font-zh); }
     .bg-expired { background-color: #c0392b; color: white; }
-    .bg-in-progress { background-color: #2ecc71; color: white; } /* 绿底进行中 */
+    .bg-in-progress { background-color: #2ecc71; color: white; }
     
     .btn-del {
       background-color: #e74c3c;
@@ -141,6 +141,29 @@
       border-radius: 4px;
       cursor: pointer;
     }
+
+    /* 新增：坐姿时间组件样式 */
+    .sitting-timer {
+      position: fixed;
+      bottom: 45px;
+      right: 20px;
+      background-color: #34495e;
+      color: white;
+      padding: 8px 14px;
+      border-radius: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      cursor: pointer;
+      user-select: none;
+      z-index: 9998;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background-color 0.2s;
+    }
+    .sitting-timer:hover {
+      background-color: #2c3e50;
+    }
   </style>
 </head>
 <body>
@@ -170,16 +193,25 @@
     </table>
   </div>
   <div id="alert-container"></div>
+  
+  <div class="sitting-timer" id="sitting-timer" onclick="handleSittingTimerClick()">
+    🪑 坐姿时间: <span id="sitting-time-display" class="font-en">点击开始</span>
+  </div>
+
   <div class="status-bar" id="status-bar">当前时间: --/-- --:--:-- | 追踪场次: 0</div>
 
   <script>
-    const BEFORE_MATCH_FOR_EARLY = 30; // 前 30 分钟
-    const AFTER_MATCH_FOR_MID = 45;    // 中场开始时间
-    const MID_DURATION = 20;           // 中场持续 20 分钟
+    const BEFORE_MATCH_FOR_EARLY = 30;
+    const AFTER_MATCH_FOR_MID = 45;   
+    const MID_DURATION = 20;           
     const STORAGE_KEY = "MATCH_TRACKER_DATA_V4";
     
     let rowsData = [];
     let rowIdCounter = 0;
+
+    // 坐姿计时器状态
+    let sittingSeconds = 0;
+    let sittingTimerRunning = false;
 
     const workerBlob = new Blob([`
       setInterval(() => { postMessage('tick'); }, 1000);
@@ -260,363 +292,4 @@
       }
     }
 
-    function triggerAlert(matchNum, nodeName) {
-      playBeep10Sec();
-      const title = "⏰ 赛事时间提醒";
-      const bodyText = `比赛场数：【${matchNum}】\n阶段：【${nodeName}】\n状态：已到达或已触发！`;
-      if ("Notification" in window && Notification.permission === "granted") {
-        const notification = new Notification(title, {
-          body: bodyText,
-          requireInteraction: true
-        });
-        notification.onclick = function() {
-          window.focus();
-          notification.close();
-        };
-      }
-      const container = document.getElementById('alert-container');
-      const toast = document.createElement('div');
-      toast.className = 'alert-toast';
-      toast.innerHTML = `
-        <h3>${title}</h3>
-        <p>⏰ 赛事倒计时结束<br>比赛场数：【${matchNum}】<br>阶段：【${nodeName}】<br>状态：已到达或已触发！</p>
-        <button onclick="this.parentElement.remove()">我知道了</button>
-      `;
-      container.appendChild(toast);
-    }
-
-    function parseDateAndTimeStr(dateStr, timeStr) {
-      if (!dateStr || !timeStr) return null;
-      let dStr = dateStr.trim();
-      let tStr = timeStr.trim();
-      if (!dStr || !tStr) return null;
-      let month, day, hour, minute;
-      
-      if (/^\d{4}$/.test(dStr)) {
-        month = parseInt(dStr.substring(0, 2), 10) - 1;
-        day = parseInt(dStr.substring(2, 4), 10);
-      } else if (/^\d{1,2}\/\d{1,2}$/.test(dStr)) {
-        const parts = dStr.split('/');
-        month = parseInt(parts[0], 10) - 1;
-        day = parseInt(parts[1], 10);
-      } else {
-        return null;
-      }
-      
-      if (/^\d{4}$/.test(tStr)) {
-        hour = parseInt(tStr.substring(0, 2), 10);
-        minute = parseInt(tStr.substring(2, 4), 10);
-      } else if (/^\d{1,2}:\d{1,2}$/.test(tStr)) {
-        const parts = tStr.split(':');
-        hour = parseInt(parts[0], 10);
-        minute = parseInt(parts[1], 10);
-      } else {
-        return null;
-      }
-      
-      const now = getNow();
-      let dt = new Date(now.getFullYear(), month, day, hour, minute, 0);
-      return dt;
-    }
-
-    function reorderDomRows() {
-      rowsData.sort((a, b) => {
-        if (!a.matchDate && !b.matchDate) return 0;
-        if (!a.matchDate) return 1;
-        if (!b.matchDate) return -1;
-        return a.matchDate.getTime() - b.matchDate.getTime();
-      });
-      const tbody = document.getElementById('match-table-body');
-      rowsData.forEach(row => {
-        const tr = document.getElementById(`row-${row.id}`);
-        if (tr) tbody.appendChild(tr);
-      });
-      updateRowIndexes();
-    }
-
-    function updateRowIndexes() {
-      const tbody = document.getElementById('match-table-body');
-      Array.from(tbody.children).forEach((tr, index) => {
-        const indexTd = tr.querySelector('.row-index-cell');
-        if (indexTd) {
-          indexTd.innerText = index + 1;
-        }
-      });
-    }
-
-    function appendRowToDOM(row, indexNum) {
-      const tbody = document.getElementById('match-table-body');
-      const tr = document.createElement('tr');
-      tr.id = `row-${row.id}`;
-      let earlyTimeText = "-";
-      let midTimeText = "-";
-      if (row.matchDate) {
-        earlyTimeText = formatDate(row.earlyOddsDate);
-        midTimeText = formatDate(row.midDate);
-      }
-      tr.innerHTML = `
-        <td class="font-en row-index-cell" style="font-weight: bold; color: #7f8c8d;">${indexNum}</td>
-        <td>
-          <input type="text" id="input-date-${row.id}" class="font-en time-date-input" value="${row.datePart}"
-            oninput="handleTimeInput(${row.id})"
-            onblur="handleTimeConfirm(${row.id})"
-            onkeydown="if(event.key==='Enter') { this.blur(); }">
-          <input type="text" id="input-time-${row.id}" class="font-en time-clock-input" value="${row.timePart}" placeholder=""
-            oninput="handleTimeInput(${row.id})"
-            onblur="handleTimeConfirm(${row.id})"
-            onkeydown="if(event.key==='Enter') { this.blur(); }">
-        </td>
-        <td>
-          <input type="text" class="font-en full-width-input" value="${row.matchNum}"
-            oninput="updateMatchNum(${row.id}, this.value)">
-        </td>
-        <td>
-          <input type="text" class="font-zh full-width-input" value="${row.league}"
-            oninput="updateLeague(${row.id}, this.value)">
-        </td>
-        <td><span class="box-cell bg-early-time font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
-        <td id="row-${row.id}-early-cd-cell"></td>
-        <td><span class="box-cell bg-mid-time font-en" id="row-${row.id}-mid-time">${midTimeText}</span></td>
-        <td id="row-${row.id}-mid-cd-cell"></td>
-        <td><button class="btn-del" onclick="removeMatchRow(${row.id})">删除</button></td>
-      `;
-      tbody.appendChild(tr);
-      updateDynamicPart(row);
-    }
-
-    function addMatchRow() {
-      requestNotificationPermission();
-      rowIdCounter++;
-      const id = rowIdCounter;
-      const now = getNow();
-      const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-      const defaultDateStr = `${formatDigit(tomorrow.getMonth() + 1)}/${formatDigit(tomorrow.getDate())}`;
-      const rowObj = {
-        id: id,
-        datePart: defaultDateStr,
-        timePart: "",
-        matchNum: "",
-        league: "",
-        isMonitoring: false,
-        matchDate: null,
-        earlyOddsDate: null,
-        midDate: null,
-        midEndDate: null,
-        earlyTriggered: false,
-        midTriggered: false
-      };
-      rowsData.push(rowObj);
-      
-      const nextIndex = document.getElementById('match-table-body').children.length + 1;
-      appendRowToDOM(rowObj, nextIndex);
-      updateMatchCount();
-      saveData();
-    }
-
-    function removeMatchRow(id) {
-      rowsData = rowsData.filter(r => r.id !== id);
-      const tr = document.getElementById(`row-${id}`);
-      if (tr) tr.remove();
-      updateRowIndexes();
-      updateMatchCount();
-      saveData();
-    }
-
-    function handleTimeInput(id) {
-      const row = rowsData.find(r => r.id === id);
-      if (!row) return;
-      const dateElem = document.getElementById(`input-date-${id}`);
-      const timeElem = document.getElementById(`input-time-${id}`);
-      if (dateElem) row.datePart = dateElem.value.trim();
-      if (timeElem) row.timePart = timeElem.value.trim();
-      row.isMonitoring = false;
-      const earlyTimeSpan = document.getElementById(`row-${id}-early-time`);
-      const midTimeSpan = document.getElementById(`row-${id}-mid-time`);
-      const earlyCdCell = document.getElementById(`row-${id}-early-cd-cell`);
-      const midCdCell = document.getElementById(`row-${id}-mid-cd-cell`);
-      const dt = parseDateAndTimeStr(row.datePart, row.timePart);
-      if (dt) {
-        row.matchDate = dt;
-        const eDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
-        const mDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
-        const mEndDate = new Date(mDate.getTime() + MID_DURATION * 60 * 1000);
-        row.earlyOddsDate = eDate;
-        row.midDate = mDate;
-        row.midEndDate = mEndDate;
-        if (earlyTimeSpan) earlyTimeSpan.innerText = formatDate(eDate);
-        if (midTimeSpan) midTimeSpan.innerText = formatDate(mDate);
-      } else {
-        row.matchDate = null;
-        if (earlyTimeSpan) earlyTimeSpan.innerText = "-";
-        if (midTimeSpan) midTimeSpan.innerText = "-";
-      }
-      if (earlyCdCell) earlyCdCell.innerHTML = `<span class="box-cell bg-warning">待确认</span>`;
-      if (midCdCell) midCdCell.innerHTML = `<span class="box-cell bg-warning">待确认</span>`;
-      saveData();
-    }
-
-    function handleTimeConfirm(id) {
-      requestNotificationPermission();
-      const row = rowsData.find(r => r.id === id);
-      if (!row) return;
-      const dt = parseDateAndTimeStr(row.datePart, row.timePart);
-      if (!dt) {
-        row.isMonitoring = false;
-        saveData();
-        return;
-      }
-      
-      const formattedDate = `${formatDigit(dt.getMonth() + 1)}/${formatDigit(dt.getDate())}`;
-      const formattedTime = `${formatDigit(dt.getHours())}:${formatDigit(dt.getMinutes())}`;
-      row.datePart = formattedDate;
-      row.timePart = formattedTime;
-      
-      const dateElem = document.getElementById(`input-date-${id}`);
-      const timeElem = document.getElementById(`input-time-${id}`);
-      if (dateElem) dateElem.value = formattedDate;
-      if (timeElem) timeElem.value = formattedTime;
-
-      row.matchDate = dt;
-      row.earlyOddsDate = new Date(dt.getTime() - BEFORE_MATCH_FOR_EARLY * 60 * 1000);
-      row.midDate = new Date(dt.getTime() + AFTER_MATCH_FOR_MID * 60 * 1000);
-      row.midEndDate = new Date(row.midDate.getTime() + MID_DURATION * 60 * 1000);
-      row.isMonitoring = true;
-      row.earlyTriggered = false;
-      row.midTriggered = false;
-
-      const now = getNow();
-      if (now >= row.midDate) {
-        row.midTriggered = true;
-        row.earlyTriggered = true;
-      } else if (now >= row.earlyOddsDate) {
-        row.earlyTriggered = true;
-      }
-
-      saveData();
-      reorderDomRows();
-      updateDynamicPart(row);
-    }
-
-    function updateMatchNum(id, val) {
-      const row = rowsData.find(r => r.id === id);
-      if (row) {
-        row.matchNum = val;
-        updateMatchCount();
-        saveData();
-      }
-    }
-
-    function updateLeague(id, val) {
-      const row = rowsData.find(r => r.id === id);
-      if (row) {
-        row.league = val;
-        saveData();
-      }
-    }
-
-    function updateMatchCount() {
-      const totalRows = rowsData.length;
-      let totalMatchSum = 0;
-      rowsData.forEach(r => {
-        if (r.matchNum) {
-          const nums = r.matchNum.match(/\d+/g);
-          if (nums) {
-            nums.forEach(n => {
-              totalMatchSum += parseInt(n, 10);
-            });
-          }
-        }
-      });
-      document.getElementById('total-count').innerText = `（总计 ${totalRows} 场次，比赛数量 ${totalMatchSum} 场）`;
-    }
-
-    function updateDynamicPart(row) {
-      const earlyCell = document.getElementById(`row-${row.id}-early-cd-cell`);
-      const midCell = document.getElementById(`row-${row.id}-mid-cd-cell`);
-      if (!earlyCell || !midCell) return;
-
-      let earlyCdHtml = `<span class="box-cell bg-warning">待确认</span>`;
-      let midCdHtml = `<span class="box-cell bg-warning">待确认</span>`;
-
-      if (row.isMonitoring && row.earlyOddsDate && row.midDate) {
-        const now = getNow();
-        const numDisplay = row.matchNum.trim() || "-";
-
-        // --- 1. 初盘状态逻辑 ---
-        if (now < row.earlyOddsDate) {
-          // 距离初盘开始：HH:MM:SS 倒计时
-          const diff = Math.floor((row.earlyOddsDate - now) / 1000);
-          const h = formatDigit(Math.floor(diff / 3600));
-          const m = formatDigit(Math.floor((diff % 3600) / 60));
-          const s = formatDigit(diff % 60);
-          earlyCdHtml = `<span class="box-cell bg-early-cd font-en">${h}:${m}:${s}</span>`;
-        } else if (now >= row.earlyOddsDate && now < row.matchDate) {
-          // 初盘进行中：开赛倒计时 MM:SS
-          if (!row.earlyTriggered) {
-            row.earlyTriggered = true;
-            triggerAlert(numDisplay, "初盘开始");
-            saveData();
-          }
-          const diff = Math.floor((row.matchDate - now) / 1000);
-          const m = formatDigit(Math.floor(diff / 60));
-          const s = formatDigit(diff % 60);
-          earlyCdHtml = `<span class="box-cell bg-in-progress font-en">初盘 ${m}:${s}</span>`;
-        } else {
-          // 已开赛：初盘结束
-          earlyCdHtml = `<span class="box-cell bg-expired font-zh">初盘结束</span>`;
-        }
-
-        // --- 2. 中场状态逻辑 ---
-        if (now < row.midDate) {
-          // 距离中场开始：HH:MM:SS 倒计时
-          const diff = Math.floor((row.midDate - now) / 1000);
-          const h = formatDigit(Math.floor(diff / 3600));
-          const m = formatDigit(Math.floor((diff % 3600) / 60));
-          const s = formatDigit(diff % 60);
-          midCdHtml = `<span class="box-cell bg-mid-cd font-en">${h}:${m}:${s}</span>`;
-        } else if (now >= row.midDate && now < row.midEndDate) {
-          // 中场进行中（20分钟内）：中场倒计时 MM:SS
-          if (!row.midTriggered) {
-            row.midTriggered = true;
-            triggerAlert(numDisplay, "中场开始");
-            saveData();
-          }
-          const diff = Math.floor((row.midEndDate - now) / 1000);
-          const m = formatDigit(Math.floor(diff / 60));
-          const s = formatDigit(diff % 60);
-          midCdHtml = `<span class="box-cell bg-in-progress font-en">中场 ${m}:${s}</span>`;
-        } else {
-          // 20分钟结束：中场结束
-          midCdHtml = `<span class="box-cell bg-expired font-zh">中场结束</span>`;
-        }
-      }
-
-      if (earlyCell.innerHTML !== earlyCdHtml) earlyCell.innerHTML = earlyCdHtml;
-      if (midCell.innerHTML !== midCdHtml) midCell.innerHTML = midCdHtml;
-    }
-
-    timerWorker.onmessage = function() {
-      const now = getNow();
-      const timeStr = `${formatDate(now)}:${formatDigit(now.getSeconds())}`;
-      const status = document.getElementById('status-bar');
-      if (status) status.innerText = `当前时间: ${timeStr} | 追踪场次: ${rowsData.length}`;
-      
-      rowsData.forEach(row => updateDynamicPart(row));
-    };
-
-    window.onload = function() {
-      requestNotificationPermission();
-      const hasHistory = loadData();
-      if (hasHistory) {
-        rowsData.forEach((row, index) => {
-          appendRowToDOM(row, index + 1);
-        });
-        reorderDomRows();
-        updateMatchCount();
-      } else {
-        addMatchRow();
-      }
-    }
-  </script>
-</body>
-</html>
+    function trigger
