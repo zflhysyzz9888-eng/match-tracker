@@ -108,7 +108,6 @@
       border-color: #3b82f6;
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
     }
-    /* 适当加宽开赛时间的两个输入框 */
     .time-date-input { width: 62px; margin-right: 4px; }
     .time-clock-input { width: 56px; }
     .full-width-input { width: 90%; }
@@ -123,18 +122,16 @@
       width: 90%;
       box-sizing: border-box;
       font-weight: bold;
-      font-size: 14px; /* 统一字号 */
+      font-size: 14px;
       box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
     }
     
-    .bg-early-time { background-color: #334155; color: #cbd5e1; border-color: #475569; }
-    /* 初盘倒计时与中场倒计时均统一使用蓝色 */
-    .bg-blue-cd { background-color: #1e3a8a; color: #93c5fd; border-color: #1d4ed8; }
-    .bg-mid-time { background-color: #334155; color: #cbd5e1; border-color: #475569; }
+    /* 统一的灰色背景（用于初盘时间、倒计时、未开始、正计时） */
+    .bg-gray-box { background-color: #334155; color: #cbd5e1; border-color: #475569; }
     .bg-warning { background-color: #451a03; color: #fde047; border-color: #854d0e; font-family: var(--font-zh); }
+    /* 统一的结束/失效红色背景（初盘结束、中场结束、比赛结束） */
     .bg-expired { background-color: #991b1b; color: #fecaca; border-color: #dc2626; }
     .bg-in-progress { background-color: #065f46; color: #a7f3d0; border-color: #059669; }
-    .bg-duration { background-color: #064e3b; color: #6ee7b7; border-color: #047857; }
     
     .btn-del {
       background-color: #ef4444;
@@ -536,9 +533,9 @@
             oninput="updateLeague(${row.id}, this.value)"
             onkeydown="handleKeyNav(event, ${row.id}, 2)">
         </td>
-        <td><span class="box-cell bg-early-time font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
+        <td><span class="box-cell bg-gray-box font-en" id="row-${row.id}-early-time">${earlyTimeText}</span></td>
         <td id="row-${row.id}-early-cd-cell"></td>
-        <td><span class="box-cell bg-mid-time font-en" id="row-${row.id}-mid-time">${midTimeText}</span></td>
+        <td><span class="box-cell bg-gray-box font-en" id="row-${row.id}-mid-time">${midTimeText}</span></td>
         <td id="row-${row.id}-mid-cd-cell"></td>
         <td id="row-${row.id}-duration-cell"></td>
         <td><button class="btn-del" onclick="removeMatchRow(${row.id})">删除</button></td>
@@ -709,12 +706,13 @@
         const now = getNow();
         const numDisplay = row.matchNum.trim() || "-";
 
+        // 初盘倒计时：改为灰色背景 bg-gray-box
         if (now < row.earlyOddsDate) {
           const diff = Math.floor((row.earlyOddsDate - now) / 1000);
           const h = formatDigit(Math.floor(diff / 3600));
           const m = formatDigit(Math.floor((diff % 3600) / 60));
           const s = formatDigit(diff % 60);
-          earlyCdHtml = `<span class="box-cell bg-blue-cd font-en">${h}:${m}:${s}</span>`;
+          earlyCdHtml = `<span class="box-cell bg-gray-box font-en">${h}:${m}:${s}</span>`;
         } else if (now >= row.earlyOddsDate && now < row.matchDate) {
           if (!row.earlyTriggered) {
             row.earlyTriggered = true;
@@ -729,12 +727,13 @@
           earlyCdHtml = `<span class="box-cell bg-expired font-zh">初盘结束</span>`;
         }
 
+        // 中场倒计时：改为灰色背景 bg-gray-box
         if (now < row.midDate) {
           const diff = Math.floor((row.midDate - now) / 1000);
           const h = formatDigit(Math.floor(diff / 3600));
           const m = formatDigit(Math.floor((diff % 3600) / 60));
           const s = formatDigit(diff % 60);
-          midCdHtml = `<span class="box-cell bg-blue-cd font-en">${h}:${m}:${s}</span>`;
+          midCdHtml = `<span class="box-cell bg-gray-box font-en">${h}:${m}:${s}</span>`;
         } else if (now >= row.midDate && now < row.midEndDate) {
           if (!row.midTriggered) {
             row.midTriggered = true;
@@ -749,9 +748,10 @@
           midCdHtml = `<span class="box-cell bg-expired font-zh">中场结束</span>`;
         }
 
+        // 比赛持续时间：未开始为灰色，正计时为灰色，比赛结束为与中场结束一样的红色 (bg-expired)
         const matchDurationMax = 2 * 60 * 60 * 1000;
         if (now < row.matchDate) {
-          durationHtml = `<span class="box-cell bg-early-time font-zh">未开始</span>`;
+          durationHtml = `<span class="box-cell bg-gray-box font-zh">未开始</span>`;
         } else {
           const elapsedMs = now - row.matchDate;
           if (elapsedMs >= matchDurationMax) {
@@ -761,7 +761,7 @@
             const h = formatDigit(Math.floor(diff / 3600));
             const m = formatDigit(Math.floor((diff % 3600) / 60));
             const s = formatDigit(diff % 60);
-            durationHtml = `<span class="box-cell bg-duration font-en">${h}:${m}:${s}</span>`;
+            durationHtml = `<span class="box-cell bg-gray-box font-en">${h}:${m}:${s}</span>`;
           }
         }
       }
