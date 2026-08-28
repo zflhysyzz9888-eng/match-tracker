@@ -8,69 +8,105 @@
     :root {
       --font-zh: "仿宋", "FangSong", STFangsong, serif;
       --font-en: "Times New Roman", Times, serif;
+      --primary-bg: #0f172a;
+      --card-bg: #1e293b;
+      --border-color: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
     }
     body {
       margin: 0;
       padding: 0;
       font-family: var(--font-zh);
-      background-color: #f9f9f9;
-      color: #2c3e50;
-      padding-bottom: 40px;
+      background-color: var(--primary-bg);
+      color: var(--text-main);
+      padding-bottom: 50px;
     }
     .top-bar {
-      background-color: #2c3e50;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
       color: white;
-      padding: 12px 20px;
+      padding: 14px 24px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
     .top-bar h1 {
       margin: 0;
       font-size: 20px;
     }
     .btn-add {
-      background-color: #2ecc71;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
       color: white;
       border: none;
-      padding: 8px 16px;
+      padding: 9px 18px;
       font-family: var(--font-zh);
       font-size: 15px;
       font-weight: bold;
-      border-radius: 4px;
+      border-radius: 6px;
       cursor: pointer;
+      box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+      transition: all 0.2s;
     }
-    .btn-add:hover { background-color: #27ae60; }
+    .btn-add:hover {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      transform: translateY(-1px);
+    }
     .table-container {
-      padding: 15px;
+      padding: 20px;
       overflow-x: auto;
     }
     table {
       width: 100%;
-      border-collapse: collapse;
-      background: white;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border-collapse: separate;
+      border-spacing: 0;
+      background: var(--card-bg);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
       min-width: 1100px;
+      border: 1px solid var(--border-color);
     }
     th, td {
-      border: 1px solid #e2e8f0;
-      padding: 6px 4px;
+      border-bottom: 1px solid var(--border-color);
+      border-right: 1px solid var(--border-color);
+      padding: 8px 4px;
       text-align: center;
       vertical-align: middle;
     }
+    th:last-child, td:last-child {
+      border-right: none;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    tr:hover {
+      background-color: rgba(255, 255, 255, 0.02);
+    }
     th {
-      background-color: #eaeded;
-      font-size: 15px;
+      background-color: #0f172a;
+      color: var(--text-muted);
+      font-size: 14px;
       font-weight: bold;
+      letter-spacing: 0.5px;
     }
     
     input {
       padding: 5px 2px;
       text-align: center;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      border: 1px solid var(--border-color);
+      background-color: #0f172a;
+      color: #ffffff;
+      border-radius: 5px;
       font-size: 15px;
       box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
     }
     .time-date-input { width: 55px; margin-right: 2px; }
     .time-clock-input { width: 50px; }
@@ -79,83 +115,91 @@
     .font-zh { font-family: var(--font-zh); }
     
     .box-cell {
-      padding: 5px 4px;
-      border-radius: 4px;
-      border: 1px solid #dcdde1;
+      padding: 6px 4px;
+      border-radius: 5px;
+      border: 1px solid transparent;
       display: inline-block;
       width: 90%;
       box-sizing: border-box;
       font-weight: bold;
+      font-size: 14px;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
     }
-    .bg-early-time { background-color: #f0f0f0; color: #7f8c8d; }
-    .bg-early-cd { background-color: #eaf2f8; color: #2980b9; }
-    .bg-mid-time { background-color: #f0f0f0; color: #7f8c8d; }
-    .bg-mid-cd { background-color: #fef9e7; color: #d35400; }
-    .bg-warning { background-color: #fcf3cf; color: #d35400; font-family: var(--font-zh); }
-    .bg-expired { background-color: #c0392b; color: white; }
-    .bg-in-progress { background-color: #2ecc71; color: white; }
-    .bg-duration { background-color: #e8f8f5; color: #16a085; }
+    
+    .bg-early-time { background-color: #334155; color: #cbd5e1; border-color: #475569; }
+    .bg-early-cd { background-color: #1e3a8a; color: #93c5fd; border-color: #1d4ed8; }
+    .bg-mid-time { background-color: #334155; color: #cbd5e1; border-color: #475569; }
+    .bg-mid-cd { background-color: #7c2d12; color: #fdba74; border-color: #c2410c; }
+    .bg-warning { background-color: #451a03; color: #fde047; border-color: #854d0e; font-family: var(--font-zh); }
+    .bg-expired { background-color: #991b1b; color: #fecaca; border-color: #dc2626; }
+    .bg-in-progress { background-color: #065f46; color: #a7f3d0; border-color: #059669; }
+    .bg-duration { background-color: #064e3b; color: #6ee7b7; border-color: #047857; }
     
     .btn-del {
-      background-color: #e74c3c;
+      background-color: #ef4444;
       color: white;
       border: none;
       padding: 6px 12px;
       font-family: var(--font-zh);
-      border-radius: 4px;
+      border-radius: 5px;
       cursor: pointer;
+      transition: background-color 0.2s;
     }
-    .btn-del:hover { background-color: #c0392b; }
+    .btn-del:hover { background-color: #dc2626; }
+    
     .status-bar {
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
-      background: #f0f0f0;
-      border-top: 1px solid #ccc;
-      padding: 6px 15px;
+      background: #0f172a;
+      border-top: 1px solid var(--border-color);
+      padding: 8px 20px;
       font-family: var(--font-en);
       font-size: 14px;
+      color: var(--text-muted);
       z-index: 999;
     }
+    
     .alert-toast {
       position: fixed;
-      bottom: 50px;
+      bottom: 60px;
       right: 20px;
       width: 320px;
-      background: #fbeee6;
-      border: 2px solid #e67e22;
-      border-radius: 8px;
-      padding: 15px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      background: #1e293b;
+      border: 2px solid #f97316;
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
       z-index: 9999;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
     }
-    .alert-toast h3 { margin: 0; color: #c0392b; font-size: 18px; }
-    .alert-toast p { margin: 0; text-align: center; color: #2c3e50; font-size: 14px; line-height: 1.5; }
+    .alert-toast h3 { margin: 0; color: #f97316; font-size: 18px; }
+    .alert-toast p { margin: 0; text-align: center; color: var(--text-main); font-size: 14px; line-height: 1.5; }
     .alert-toast button {
-      background: #e67e22;
+      background: #f97316;
       color: white;
       border: none;
-      padding: 6px 16px;
+      padding: 6px 18px;
       font-family: var(--font-zh);
       font-weight: bold;
-      border-radius: 4px;
+      border-radius: 5px;
       cursor: pointer;
     }
 
     .sitting-timer-widget {
       position: fixed;
-      bottom: 45px;
+      bottom: 50px;
       right: 20px;
-      background-color: #34495e;
-      color: white;
-      padding: 8px 16px;
+      background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+      color: #f8fafc;
+      padding: 8px 18px;
       border-radius: 20px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      border: 1px solid #475569;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.4);
       display: flex;
       align-items: center;
       gap: 8px;
@@ -165,13 +209,11 @@
       font-family: var(--font-en);
       font-size: 15px;
       font-weight: bold;
-      transition: background-color 0.2s, transform 0.1s;
+      transition: all 0.2s;
     }
     .sitting-timer-widget:hover {
-      background-color: #2c3e50;
-    }
-    .sitting-timer-widget:active {
-      transform: scale(0.98);
+      background: linear-gradient(135deg, #475569 0%, #334155 100%);
+      transform: translateY(-2px);
     }
     .sitting-timer-widget .label-zh {
       font-family: var(--font-zh);
@@ -182,8 +224,8 @@
 <body>
   <div class="top-bar">
     <div>
-      <span style="font-size: 20px; font-weight: bold;">赛事事件流监控台</span>
-      <span id="total-count" style="color: #2ecc71; margin-left: 10px; font-weight: bold;">（总计 0 场次，比赛数量 0 场）</span>
+      <span style="font-size: 20px; font-weight: bold; letter-spacing: 1px;">赛事事件流监控台</span>
+      <span id="total-count" style="color: #10b981; margin-left: 12px; font-weight: bold;">（总计 0 场次，比赛数量 0 场）</span>
     </div>
     <button class="btn-add" onclick="addMatchRow()">+ 添加新比赛场次</button>
   </div>
@@ -472,7 +514,7 @@
         midTimeText = formatDate(row.midDate);
       }
       tr.innerHTML = `
-        <td class="font-en row-index-cell" style="font-weight: bold; color: #7f8c8d;">${indexNum}</td>
+        <td class="font-en row-index-cell" style="font-weight: bold; color: var(--text-muted);">${indexNum}</td>
         <td>
           <input type="text" id="input-date-${row.id}" class="font-en time-date-input" value="${row.datePart}"
             oninput="handleTimeInput(${row.id})"
