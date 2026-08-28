@@ -54,8 +54,9 @@
     }
     th, td {
       border: 1px solid #e2e8f0;
-      padding: 8px;
+      padding: 6px 4px; /* 上下6px，左右缩小三分之一至4px */
       text-align: center;
+      vertical-align: middle;
     }
     th {
       background-color: #eaeded;
@@ -64,23 +65,28 @@
     }
     
     input {
-      padding: 6px;
+      padding: 5px 2px;
       text-align: center;
       border: 1px solid #ccc;
       border-radius: 4px;
       font-size: 15px;
+      box-sizing: border-box;
     }
-    .time-date-input { width: 70px; }
-    .time-clock-input { width: 60px; }
-    .full-width-input { width: 90%; }
+    .time-date-input { width: 68px; }
+    .time-clock-input { width: 58px; }
+    .full-width-input { width: 95%; }
     .font-en { font-family: var(--font-en); }
     .font-zh { font-family: var(--font-zh); }
+    
+    /* 缩小红框内胶囊格子的左右内边距（左右缩小1/3） */
     .box-cell {
-      padding: 6px;
+      padding: 5px 6px; /* 左右间距调小 */
       border-radius: 4px;
       border: 1px solid #dcdde1;
       display: inline-block;
-      min-width: 110px;
+      width: 88%;
+      max-width: 130px;
+      box-sizing: border-box;
       font-weight: bold;
     }
     .bg-early-time { background-color: #f0f0f0; color: #7f8c8d; }
@@ -188,16 +194,16 @@
     <table>
       <thead>
         <tr>
-          <th style="width: 50px;">序号</th>
-          <th style="width: 180px;">开赛时间（日期/时间）</th>
-          <th style="width: 60px;">比赛场数</th>
-          <th style="width: 170px;">联赛</th>
-          <th style="width: 160px;">初盘时间（t-30min）</th>
-          <th style="width: 170px;">距离初盘倒计时</th>
-          <th style="width: 160px;">中场时间（t+45min）</th>
-          <th style="width: 170px;">距离中场倒计时</th>
-          <th style="width: 150px;">比赛持续时间</th>
-          <th style="width: 90px;">操作</th>
+          <th style="width: 45px;">序号</th>
+          <th style="width: 165px;">开赛时间（日期/时间）</th>
+          <th style="width: 55px;">比赛场数</th>
+          <th style="width: 260px;">联赛</th> <!-- 拓宽联赛列以接纳缩小释放的空间 -->
+          <th style="width: 130px;">初盘时间（t-30min）</th>
+          <th style="width: 135px;">距离初盘倒计时</th>
+          <th style="width: 130px;">中场时间（t+45min）</th>
+          <th style="width: 135px;">距离中场倒计时</th>
+          <th style="width: 130px;">比赛持续时间</th>
+          <th style="width: 75px;">操作</th>
         </tr>
       </thead>
       <tbody id="match-table-body"></tbody>
@@ -389,7 +395,6 @@
       });
     }
 
-    // 处理方向键与回车键矩阵导航逻辑
     function handleKeyNav(event, rowId, colIndex) {
       const key = event.key;
       const navKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'];
@@ -666,7 +671,6 @@
         const now = getNow();
         const numDisplay = row.matchNum.trim() || "-";
 
-        // --- 1. 初盘状态逻辑 ---
         if (now < row.earlyOddsDate) {
           const diff = Math.floor((row.earlyOddsDate - now) / 1000);
           const h = formatDigit(Math.floor(diff / 3600));
@@ -687,7 +691,6 @@
           earlyCdHtml = `<span class="box-cell bg-expired font-zh">初盘结束</span>`;
         }
 
-        // --- 2. 中场状态逻辑 ---
         if (now < row.midDate) {
           const diff = Math.floor((row.midDate - now) / 1000);
           const h = formatDigit(Math.floor(diff / 3600));
@@ -708,8 +711,7 @@
           midCdHtml = `<span class="box-cell bg-expired font-zh">中场结束</span>`;
         }
 
-        // --- 3. 比赛持续时间逻辑（2小时内正计时，超出为比赛结束） ---
-        const matchDurationMax = 2 * 60 * 60 * 1000; // 2 小时毫秒数
+        const matchDurationMax = 2 * 60 * 60 * 1000;
         if (now < row.matchDate) {
           durationHtml = `<span class="box-cell bg-early-time font-zh">未开始</span>`;
         } else {
@@ -731,7 +733,6 @@
       if (durationCell.innerHTML !== durationHtml) durationCell.innerHTML = durationHtml;
     }
 
-    // 坐姿计时控制逻辑
     function toggleSittingTimer() {
       sittingSeconds = 0;
       updateSittingDisplay();
