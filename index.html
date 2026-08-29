@@ -143,15 +143,13 @@
     }
     .btn-del:hover { background-color: #dc2626; }
     
-    /* 当前时间与追踪场次：固定在右下角 */
     .status-bar {
       position: fixed;
       bottom: 0;
+      left: 0;
       right: 0;
       background: #0f172a;
       border-top: 1px solid var(--border-color);
-      border-left: 1px solid var(--border-color);
-      border-top-left-radius: 8px;
       padding: 8px 20px;
       font-family: var(--font-en);
       font-size: 14px;
@@ -188,17 +186,17 @@
       cursor: pointer;
     }
 
-    /* 坐姿计时：固定在左下角底部 */
+    /* 挪到左下角，并扩展支持两个盒子的布局 */
     .sitting-timer-widget {
       position: fixed;
-      bottom: 0;
-      left: 0;
-      background: #0f172a;
-      border-top: 1px solid var(--border-color);
-      border-right: 1px solid var(--border-color);
-      border-top-right-radius: 8px;
+      bottom: 50px;
+      left: 20px;
+      background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
       color: #f8fafc;
-      padding: 6px 16px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: 1px solid #475569;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.4);
       display: flex;
       align-items: center;
       gap: 12px;
@@ -208,16 +206,17 @@
       font-family: var(--font-en);
       font-size: 14px;
       font-weight: bold;
-      transition: background-color 0.2s;
+      transition: all 0.2s;
     }
     .sitting-timer-widget:hover {
-      background-color: #1e293b;
+      background: linear-gradient(135deg, #475569 0%, #334155 100%);
+      transform: translateY(-2px);
     }
     .sitting-box {
-      background-color: #1e293b;
+      background-color: #0f172a;
       border: 1px solid #475569;
-      padding: 2px 6px;
-      border-radius: 4px;
+      padding: 4px 8px;
+      border-radius: 6px;
       color: #38bdf8;
     }
     .sitting-timer-widget .label-zh {
@@ -255,8 +254,9 @@
     </table>
   </div>
   <div id="alert-container"></div>
+  <div class="status-bar" id="status-bar">当前时间: --/-- --:--:-- | 追踪场次: 0</div>
 
-  <!-- 左下角：坐姿计时 -->
+  <!-- 左下角：开始时间与持续时间两个盒子 -->
   <div class="sitting-timer-widget" onclick="toggleSittingTimer()" title="点击重新开始/归零重置计时">
     <span class="label-zh">🪑 坐姿计时</span>
     <div>
@@ -268,9 +268,6 @@
       <span id="sitting-timer-display" class="sitting-box">00:00:00</span>
     </div>
   </div>
-
-  <!-- 右下角：当前时间与追踪场次 -->
-  <div class="status-bar" id="status-bar">当前时间: --/-- --:--:-- | 追踪场次: 0</div>
 
   <script>
     const BEFORE_MATCH_FOR_EARLY = 30;
@@ -785,6 +782,7 @@
       if (durationCell.innerHTML !== durationHtml) durationCell.innerHTML = durationHtml;
     }
 
+    // 重置/开始坐姿计时，并记录此时的时分秒
     function toggleSittingTimer() {
       const now = new Date();
       sittingStartTime = now.getTime();
