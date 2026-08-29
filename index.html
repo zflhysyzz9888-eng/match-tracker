@@ -126,10 +126,8 @@
       box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
     }
     
-    /* 统一的灰色背景（用于初盘时间、倒计时、未开始、正计时） */
     .bg-gray-box { background-color: #334155; color: #cbd5e1; border-color: #475569; }
     .bg-warning { background-color: #451a03; color: #fde047; border-color: #854d0e; font-family: var(--font-zh); }
-    /* 统一的结束/失效红色背景（初盘结束、中场结束、比赛结束） */
     .bg-expired { background-color: #991b1b; color: #fecaca; border-color: #dc2626; }
     .bg-in-progress { background-color: #065f46; color: #a7f3d0; border-color: #059669; }
     
@@ -188,24 +186,25 @@
       cursor: pointer;
     }
 
+    /* 挪到左下角，并扩展支持两个盒子的布局 */
     .sitting-timer-widget {
       position: fixed;
       bottom: 50px;
-      right: 20px;
+      left: 20px;
       background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
       color: #f8fafc;
-      padding: 8px 18px;
+      padding: 8px 16px;
       border-radius: 20px;
       border: 1px solid #475569;
       box-shadow: 0 6px 16px rgba(0,0,0,0.4);
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 12px;
       cursor: pointer;
       user-select: none;
       z-index: 9998;
       font-family: var(--font-en);
-      font-size: 15px;
+      font-size: 14px;
       font-weight: bold;
       transition: all 0.2s;
     }
@@ -213,9 +212,17 @@
       background: linear-gradient(135deg, #475569 0%, #334155 100%);
       transform: translateY(-2px);
     }
+    .sitting-box {
+      background-color: #0f172a;
+      border: 1px solid #475569;
+      padding: 4px 8px;
+      border-radius: 6px;
+      color: #38bdf8;
+    }
     .sitting-timer-widget .label-zh {
       font-family: var(--font-zh);
       font-size: 14px;
+      color: #cbd5e1;
     }
   </style>
 </head>
@@ -249,9 +256,17 @@
   <div id="alert-container"></div>
   <div class="status-bar" id="status-bar">当前时间: --/-- --:--:-- | 追踪场次: 0</div>
 
-  <div class="sitting-timer-widget" onclick="toggleSittingTimer()" title="点击开始/归零重置计时">
-    <span class="label-zh">🪑 坐姿时间:</span>
-    <span id="sitting-timer-display">00:00:00</span>
+  <!-- 左下角：开始时间与持续时间两个盒子 -->
+  <div class="sitting-timer-widget" onclick="toggleSittingTimer()" title="点击重新开始/归零重置计时">
+    <span class="label-zh">🪑 坐姿计时</span>
+    <div>
+      <span class="label-zh">开始:</span>
+      <span id="sitting-start-display" class="sitting-box">--:--:--</span>
+    </div>
+    <div>
+      <span class="label-zh">时长:</span>
+      <span id="sitting-timer-display" class="sitting-box">00:00:00</span>
+    </div>
   </div>
 
   <script>
@@ -263,9 +278,8 @@
     let rowsData = [];
     let rowIdCounter = 0;
 
-    let sittingSeconds = 0;
+    let sittingStartTime = null;
     let sittingTimerRunning = false;
-    let sittingIntervalId = null;
 
     const workerBlob = new Blob([`
       setInterval(() => { postMessage('tick'); }, 1000);
@@ -706,7 +720,6 @@
         const now = getNow();
         const numDisplay = row.matchNum.trim() || "-";
 
-        // 初盘倒计时：改为灰色背景 bg-gray-box
         if (now < row.earlyOddsDate) {
           const diff = Math.floor((row.earlyOddsDate - now) / 1000);
           const h = formatDigit(Math.floor(diff / 3600));
@@ -727,7 +740,6 @@
           earlyCdHtml = `<span class="box-cell bg-expired font-zh">初盘结束</span>`;
         }
 
-        // 中场倒计时：改为灰色背景 bg-gray-box
         if (now < row.midDate) {
           const diff = Math.floor((row.midDate - now) / 1000);
           const h = formatDigit(Math.floor(diff / 3600));
@@ -748,7 +760,6 @@
           midCdHtml = `<span class="box-cell bg-expired font-zh">中场结束</span>`;
         }
 
-        // 比赛持续时间：未开始为灰色，正计时为灰色，比赛结束为与中场结束一样的红色 (bg-expired)
         const matchDurationMax = 2 * 60 * 60 * 1000;
         if (now < row.matchDate) {
           durationHtml = `<span class="box-cell bg-gray-box font-zh">未开始</span>`;
@@ -771,23 +782,29 @@
       if (durationCell.innerHTML !== durationHtml) durationCell.innerHTML = durationHtml;
     }
 
+    // 重置/开始坐姿计时，并记录此时的时分秒
     function toggleSittingTimer() {
-      sittingSeconds = 0;
+      const now = new Date();
+      sittingStartTime = now.getTime();
+      sittingTimerRunning = true;
+      
+      const startH = formatDigit(now.getHours());
+      const startM = formatDigit(now.getMinutes());
+      const startS = formatDigit(now.getSeconds());
+      document.getElementById('sitting-start-display').innerText = `${startH}:${startM}:${startS}`;
+      
       updateSittingDisplay();
-      if (!sittingTimerRunning) {
-        sittingTimerRunning = true;
-        if (sittingIntervalId) clearInterval(sittingIntervalId);
-        sittingIntervalId = setInterval(() => {
-          sittingSeconds++;
-          updateSittingDisplay();
-        }, 1000);
-      }
     }
 
     function updateSittingDisplay() {
-      const h = formatDigit(Math.floor(sittingSeconds / 3600));
-      const m = formatDigit(Math.floor((sittingSeconds % 3600) / 60));
-      const s = formatDigit(sittingSeconds % 60);
+      if (!sittingTimerRunning || !sittingStartTime) {
+        document.getElementById('sitting-timer-display').innerText = "00:00:00";
+        return;
+      }
+      const elapsedSeconds = Math.floor((Date.now() - sittingStartTime) / 1000);
+      const h = formatDigit(Math.floor(elapsedSeconds / 3600));
+      const m = formatDigit(Math.floor((elapsedSeconds % 3600) / 60));
+      const s = formatDigit(elapsedSeconds % 60);
       document.getElementById('sitting-timer-display').innerText = `${h}:${m}:${s}`;
     }
 
@@ -798,6 +815,7 @@
       if (status) status.innerText = `当前时间: ${timeStr} | 追踪场次: ${rowsData.length}`;
       
       rowsData.forEach(row => updateDynamicPart(row));
+      updateSittingDisplay();
     };
 
     window.onload = function() {
